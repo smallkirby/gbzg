@@ -1,4 +1,4 @@
-const Bootrom = struct {
+pub const Bootrom = struct {
     rom: [*]u8,
     active: bool = true,
 

@@ -1,10 +1,11 @@
 const gbzg = @import("gbzg.zig");
 
 pub const WRam = struct {
+    pub const size = 0x2000;
     ram: []u8,
 
     pub fn new() !WRam {
-        const ram = try gbzg.wram_allocator.alloc([128]u8, 1);
+        const ram = try gbzg.wram_allocator.alloc([WRam.size]u8, 1);
         const wram = WRam{
             .ram = &ram[0],
         };
@@ -19,11 +20,11 @@ pub const WRam = struct {
     }
 
     pub fn write(self: WRam, addr: u16, val: u8) void {
-        self.ram[addr] = val;
+        self.ram[addr & 0x1FFF] = val;
     }
 
     pub fn read(self: WRam, addr: u16) u8 {
-        return self.ram[addr];
+        return self.ram[addr & 0x1FFF];
     }
 };
 
@@ -32,7 +33,7 @@ const memEql = @import("std").mem.eql;
 
 test "WRAM cleared" {
     const wram = try WRam.new();
-    const all_zero = [_]u8{0} ** 128;
+    const all_zero = [_]u8{0} ** WRam.size;
     try expect(memEql(u8, wram.ram, &all_zero));
 }
 

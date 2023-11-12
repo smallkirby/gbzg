@@ -1,10 +1,11 @@
 const gbzg = @import("gbzg.zig");
 
 pub const HRam = struct {
+    pub const size = 0x80;
     ram: []u8,
 
     pub fn new() !HRam {
-        const ram = try gbzg.hram_allocator.alloc([128]u8, 1);
+        const ram = try gbzg.hram_allocator.alloc([HRam.size]u8, 1);
         const hram = HRam{
             .ram = &ram[0],
         };
@@ -19,11 +20,11 @@ pub const HRam = struct {
     }
 
     pub fn write(self: HRam, addr: u16, val: u8) void {
-        self.ram[addr] = val;
+        self.ram[addr & 0x7F] = val;
     }
 
     pub fn read(self: HRam, addr: u16) u8 {
-        return self.ram[addr];
+        return self.ram[addr & 0x7F];
     }
 };
 
@@ -32,7 +33,7 @@ const memEql = @import("std").mem.eql;
 
 test "HRAM cleared" {
     const hram = try HRam.new();
-    const all_zero = [_]u8{0} ** 128;
+    const all_zero = [_]u8{0} ** HRam.size;
     try expect(memEql(u8, hram.ram, &all_zero));
 }
 
