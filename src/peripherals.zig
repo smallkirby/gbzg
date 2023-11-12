@@ -3,7 +3,7 @@ const HRam = @import("hram.zig").HRam;
 const WRam = @import("wram.zig").WRam;
 
 /// Periperal devices and MMIO handler
-const Peripherals = struct {
+pub const Peripherals = struct {
     bootrom: Bootrom,
     hram: HRam,
     wram: WRam,
