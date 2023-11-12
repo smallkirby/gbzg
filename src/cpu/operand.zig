@@ -36,7 +36,7 @@ pub const Reg8 = enum(u8) {
     H,
     L,
 
-    /// Read 16-bit value from a register.
+    /// Read 8-bit value from a register.
     /// Consumes 0 cycles.
     pub fn read8(cpu: *Cpu, _: *Peripherals, src: Reg8) ?u8 {
         return switch (src) {
@@ -50,7 +50,7 @@ pub const Reg8 = enum(u8) {
         };
     }
 
-    /// Write 16-bit value to a register.
+    /// Write 8-bit value to a register.
     /// Consumes 0 cycles.
     pub fn write8(cpu: *Cpu, _: *Peripherals, dst: Reg8, val: u8) void {
         switch (dst) {
@@ -103,15 +103,15 @@ pub const Imm8 = struct {
     /// Increments PC by 1.
     pub fn read8(cpu: *Cpu, bus: *Peripherals) ?u8 {
         return switch (cpu.ctx.mem_ctx.step orelse 0) {
-            0 => {
+            0 => blk: {
                 cpu.ctx.mem_ctx.cache = @as(u16, bus.read(cpu.regs.pc));
                 cpu.ctx.mem_ctx.step = 1;
                 cpu.regs.pc +%= 1;
-                return null;
+                break :blk null;
             },
-            1 => {
+            1 => blk: {
                 cpu.ctx.mem_ctx.step = null;
-                return @as(u8, @intCast(cpu.ctx.mem_ctx.cache.? & 0xFF));
+                break :blk @as(u8, @intCast(cpu.ctx.mem_ctx.cache.? & 0xFF));
             },
             else => unreachable,
         };
@@ -128,21 +128,21 @@ pub const Imm16 = struct {
     /// Increments PC by 2.
     pub fn read16(cpu: *Cpu, bus: *Peripherals) ?u16 {
         return switch (cpu.ctx.mem_ctx.step orelse 0) {
-            0 => {
+            0 => blk: {
                 cpu.ctx.mem_ctx.cache = bus.read(cpu.regs.pc);
                 cpu.ctx.mem_ctx.step = 1;
                 cpu.regs.pc +%= 1;
-                return null;
+                break :blk null;
             },
-            1 => {
+            1 => blk: {
                 cpu.ctx.mem_ctx.cache.? |= @as(u16, bus.read(cpu.regs.pc)) << 8;
                 cpu.ctx.mem_ctx.step = 2;
                 cpu.regs.pc +%= 1;
-                return null;
+                break :blk null;
             },
-            2 => {
+            2 => blk: {
                 cpu.ctx.mem_ctx.step = null;
-                return cpu.ctx.mem_ctx.cache.?;
+                break :blk cpu.ctx.mem_ctx.cache.?;
             },
             else => unreachable,
         };
@@ -164,24 +164,71 @@ pub const Indirect = enum(u8) {
     /// Read 8-bit value from memory pointed by register pair.
     /// Consumes 1 cycle.
     pub fn read8(cpu: *Cpu, bus: *Peripherals, src: Indirect) ?u8 {
-        // TODO
-        _ = cpu;
-        _ = bus;
-        _ = src;
-        unreachable;
+        return switch (cpu.ctx.mem_ctx.step orelse 0) {
+            0 => blk: {
+                cpu.ctx.mem_ctx.cache = switch (src) {
+                    .BC => bus.read(cpu.regs.bc()),
+                    .DE => bus.read(cpu.regs.de()),
+                    .HL => bus.read(cpu.regs.hl()),
+                    .CFF => bus.read(0xFF00 | @as(u16, cpu.regs.c)),
+                    .HLD => inn: {
+                        const addr = cpu.regs.hl();
+                        cpu.regs.write_hl(addr -% 1);
+                        break :inn bus.read(addr);
+                    },
+                    .HLI => inn: {
+                        const addr = cpu.regs.hl();
+                        cpu.regs.write_hl(addr +% 1);
+                        break :inn bus.read(addr);
+                    },
+                };
+                cpu.ctx.mem_ctx.step = 1;
+                break :blk null;
+            },
+            1 => blk: {
+                cpu.ctx.mem_ctx.step = null;
+                break :blk @intCast(cpu.ctx.mem_ctx.cache.? & 0xFF);
+            },
+            else => unreachable,
+        };
     }
 
-    pub fn write8(cpu: *Cpu, bus: *Peripherals, dst: Indirect, val: u8) void {
-        // TODO
-        _ = cpu;
-        _ = bus;
-        _ = dst;
-        _ = val;
-        unreachable;
+    /// Write 8-bit value to memory pointed by register pair.
+    /// Consumes 1 cycle.
+    pub fn write8(cpu: *Cpu, bus: *Peripherals, dst: Indirect, val: u8) ?void {
+        return switch (cpu.ctx.mem_ctx.step orelse 0) {
+            0 => blk: {
+                switch (dst) {
+                    .BC => bus.write(cpu.regs.bc(), val),
+                    .DE => bus.write(cpu.regs.de(), val),
+                    .HL => bus.write(cpu.regs.hl(), val),
+                    .CFF => bus.write(0xFF00 | @as(u16, cpu.regs.c), val),
+                    .HLD => {
+                        const addr = cpu.regs.hl();
+                        cpu.regs.write_hl(addr -% 1);
+                        bus.write(addr, val);
+                    },
+                    .HLI => {
+                        const addr = cpu.regs.hl();
+                        cpu.regs.write_hl(addr +% 1);
+                        bus.write(addr, val);
+                    },
+                }
+                cpu.ctx.mem_ctx.step = 1;
+                break :blk null;
+            },
+            1 => {
+                cpu.ctx.mem_ctx.step = null;
+            },
+            else => unreachable,
+        };
     }
 };
 
-pub const Direct8 = enum(u8) { D, DFF };
+pub const Direct8 = enum(u8) {
+    D,
+    DFF,
+};
 pub const Direct16 = struct {};
 pub const Cond = enum(u8) { NZ, Z, NC, C };
 
@@ -235,6 +282,75 @@ test "imm16" {
     try expect(Imm16.read16(&cpu, &peripherals) == null);
     try expect(Imm16.read16(&cpu, &peripherals) == 0x3412);
     try expect(cpu.regs.pc == 0xC004);
+}
+
+test "indirect read" {
+    const tutil = @import("test_util.zig");
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    cpu.regs.write_bc(0xC080);
+    cpu.regs.write_de(0xC001);
+    cpu.regs.write_hl(0xC002);
+    peripherals.write(0xC001, 0xFF);
+    peripherals.write(0xC002, 0x12);
+    peripherals.write(0xC080, 0x58);
+    peripherals.write(0xFF80, 0x25);
+
+    try expect(Indirect.read8(&cpu, &peripherals, .BC) == null);
+    try expect(Indirect.read8(&cpu, &peripherals, .BC) == 0x58);
+    try expect(Indirect.read8(&cpu, &peripherals, .DE) == null);
+    try expect(Indirect.read8(&cpu, &peripherals, .DE) == 0xFF);
+    try expect(Indirect.read8(&cpu, &peripherals, .HL) == null);
+    try expect(Indirect.read8(&cpu, &peripherals, .HL) == 0x12);
+
+    try expect(Indirect.read8(&cpu, &peripherals, .CFF) == null);
+    try expect(Indirect.read8(&cpu, &peripherals, .CFF) == 0x25);
+
+    try expect(cpu.regs.hl() == 0xC002);
+    try expect(Indirect.read8(&cpu, &peripherals, .HLD) == null);
+    try expect(Indirect.read8(&cpu, &peripherals, .HLD) == 0x12);
+    try expect(cpu.regs.hl() == 0xC001);
+
+    try expect(Indirect.read8(&cpu, &peripherals, .HLI) == null);
+    try expect(Indirect.read8(&cpu, &peripherals, .HLI) == 0xFF);
+    try expect(cpu.regs.hl() == 0xC002);
+}
+
+test "indirect write" {
+    const tutil = @import("test_util.zig");
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    cpu.regs.write_bc(0xC080);
+    cpu.regs.write_de(0xC001);
+    cpu.regs.write_hl(0xC002);
+
+    try expect(Indirect.write8(&cpu, &peripherals, .BC, 0x58) == null);
+    try expect(Indirect.write8(&cpu, &peripherals, .BC, 0x58) != null);
+    try expect(peripherals.read(0xC080) == 0x58);
+
+    try expect(Indirect.write8(&cpu, &peripherals, .DE, 0x22) == null);
+    try expect(Indirect.write8(&cpu, &peripherals, .DE, 0x22) != null);
+    try expect(peripherals.read(0xC001) == 0x22);
+
+    try expect(Indirect.write8(&cpu, &peripherals, .HL, 0x19) == null);
+    try expect(Indirect.write8(&cpu, &peripherals, .HL, 0x19) != null);
+    try expect(peripherals.read(0xC002) == 0x19);
+
+    try expect(Indirect.write8(&cpu, &peripherals, .CFF, 0x34) == null);
+    try expect(Indirect.write8(&cpu, &peripherals, .CFF, 0x34) != null);
+    try expect(peripherals.read(0xFF80) == 0x34);
+
+    try expect(Indirect.write8(&cpu, &peripherals, .HLD, 0x25) == null);
+    try expect(Indirect.write8(&cpu, &peripherals, .HLD, 0x25) != null);
+    try expect(peripherals.read(0xC002) == 0x25);
+    try expect(cpu.regs.hl() == 0xC001);
+
+    try expect(Indirect.write8(&cpu, &peripherals, .HLI, 0x99) == null);
+    try expect(Indirect.write8(&cpu, &peripherals, .HLI, 0x99) != null);
+    try expect(peripherals.read(0xC001) == 0x99);
+    try expect(cpu.regs.hl() == 0xC002);
 }
 
 const expect = @import("std").testing.expect;

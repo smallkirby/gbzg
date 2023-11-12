@@ -6,7 +6,7 @@ const Opcode = @import("instruction.zig").Opcode;
 const Ctx = struct {
     /// Current opcode
     opcode: u8,
-    /// TODO
+    /// Now parsing 0xCB prefixed instructions
     cb: bool,
     /// multi-cycle information for memory IO
     mem_ctx: StepInfo,
