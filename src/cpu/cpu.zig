@@ -1,10 +1,11 @@
 const Registers = @import("register.zig").Registers;
 const Peripherals = @import("../peripherals.zig").Peripherals;
+const Opcode = @import("instruction.zig").Opcode;
 
 /// Context necessary to handle multi-cycle instructions
 const Ctx = struct {
     /// Current opcode
-    opcode: u8,
+    opcode: Opcode,
     /// TODO
     cb: bool,
 };
@@ -15,9 +16,17 @@ pub const Cpu = struct {
     ctx: Ctx,
 
     pub fn fetch(self: *Cpu, bus: *Peripherals) void {
-        self.ctx.opcode = bus.read(self.regs.pc);
+        self.ctx.opcode = @enumFromInt(bus.read(self.regs.pc));
         self.regs.pc +%= 1;
         self.ctx.cb = false;
+    }
+
+    pub fn decode(self: *Cpu, bus: *Peripherals) void {
+        self.ctx.opcode.execute(self, bus);
+    }
+
+    pub fn emulate_cycle(self: *Cpu, bus: *Peripherals) void {
+        self.decode(bus);
     }
 };
 
@@ -27,7 +36,7 @@ test "Basic fetch" {
 
     cpu.regs.pc = 0xC000; // WRAM
     cpu.fetch(&peripherals);
-    try expect(cpu.ctx.opcode == 0);
+    try expect(cpu.ctx.opcode == .NOP);
     try expect(cpu.regs.pc == 0xC001);
 }
 
@@ -45,7 +54,7 @@ fn t_init_cpu() Cpu {
         .pc = 0,
     };
     return Cpu{
-        .ctx = .{ .opcode = 0, .cb = false },
+        .ctx = .{ .opcode = .NOP, .cb = false },
         .regs = regs,
     };
 }
