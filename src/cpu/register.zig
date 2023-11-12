@@ -11,6 +11,21 @@ pub const Registers = struct {
     h: u8,
     l: u8,
 
+    pub fn new() Registers {
+        return Registers{
+            .pc = 0,
+            .sp = 0,
+            .a = 0,
+            .b = 0,
+            .c = 0,
+            .d = 0,
+            .e = 0,
+            .f = 0,
+            .h = 0,
+            .l = 0,
+        };
+    }
+
     // Convenience functions to access the registers as 16-bit values
     pub fn af(self: Registers) u16 {
         return (@as(u16, self.a) << 8) | self.f;

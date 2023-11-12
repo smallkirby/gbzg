@@ -5,9 +5,34 @@ const Opcode = @import("instruction.zig").Opcode;
 /// Context necessary to handle multi-cycle instructions
 const Ctx = struct {
     /// Current opcode
-    opcode: Opcode,
+    opcode: u8,
     /// TODO
     cb: bool,
+    /// multi-cycle information for memory IO
+    mem_ctx: StepInfo,
+    /// multi-cycle information for instructions
+    inst_ctx: StepInfo,
+
+    pub fn new() Ctx {
+        return Ctx{
+            .opcode = 0,
+            .cb = false,
+            .mem_ctx = StepInfo.new(),
+            .inst_ctx = StepInfo.new(),
+        };
+    }
+};
+
+const StepInfo = struct {
+    step: ?u8,
+    cache: ?u16,
+
+    pub fn new() StepInfo {
+        return StepInfo{
+            .step = null,
+            .cache = null,
+        };
+    }
 };
 
 /// CPU implementation
@@ -15,14 +40,24 @@ pub const Cpu = struct {
     regs: Registers,
     ctx: Ctx,
 
+    pub fn new() Cpu {
+        return Cpu{
+            .regs = Registers.new(),
+            .ctx = Ctx.new(),
+        };
+    }
+
     pub fn fetch(self: *Cpu, bus: *Peripherals) void {
-        self.ctx.opcode = @enumFromInt(bus.read(self.regs.pc));
+        self.ctx.opcode = bus.read(self.regs.pc);
         self.regs.pc +%= 1;
         self.ctx.cb = false;
     }
 
     pub fn decode(self: *Cpu, bus: *Peripherals) void {
-        self.ctx.opcode.execute(self, bus);
+        switch (self.ctx.opcode) {
+            0x00 => self.nop(bus),
+            else => @compileError("Unimplemented opcode"),
+        }
     }
 
     pub fn emulate_cycle(self: *Cpu, bus: *Peripherals) void {
@@ -32,31 +67,12 @@ pub const Cpu = struct {
 
 test "Basic fetch" {
     var peripherals = try t_init_peripherals();
-    var cpu = t_init_cpu();
+    var cpu = Cpu.new();
 
     cpu.regs.pc = 0xC000; // WRAM
     cpu.fetch(&peripherals);
-    try expect(cpu.ctx.opcode == .NOP);
+    try expect(cpu.ctx.opcode == 0x00);
     try expect(cpu.regs.pc == 0xC001);
-}
-
-fn t_init_cpu() Cpu {
-    var regs = Registers{
-        .a = 0,
-        .b = 0,
-        .c = 0,
-        .d = 0,
-        .e = 0,
-        .h = 0,
-        .l = 0,
-        .f = 0,
-        .sp = 0,
-        .pc = 0,
-    };
-    return Cpu{
-        .ctx = .{ .opcode = .NOP, .cb = false },
-        .regs = regs,
-    };
 }
 
 fn t_init_peripherals() !Peripherals {
