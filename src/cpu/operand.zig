@@ -46,6 +46,20 @@ pub const Operand = union(enum) {
             .direct16 => Direct16.write(cpu, peripherals, val),
         };
     }
+
+    pub fn is8(self: @This()) bool {
+        return switch (self) {
+            .reg8, .imm8, .indirect, .direct8 => true,
+            .reg16, .imm16, .direct16 => false,
+        };
+    }
+
+    pub fn is16(self: @This()) bool {
+        return switch (self) {
+            .reg8, .imm8, .indirect, .direct8 => false,
+            .reg16, .imm16, .direct16 => true,
+        };
+    }
 };
 
 /// 8-bit register operands

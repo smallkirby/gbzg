@@ -49,6 +49,46 @@ pub fn cp(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
     }
 }
 
+/// Increment a value of an operand, then set flags according to the result if necessary.
+pub fn inc(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
+    switch (cpu.ctx.inst_ctx.step orelse 0) {
+        0 => {
+            const v = src.read(cpu, bus);
+            if (v != null) {
+                if (src.is8()) {
+                    const u: u8 = @intCast(v.? & 0xFF);
+                    const res = u +% 1;
+                    cpu.regs.set_zf(res == 0);
+                    cpu.regs.set_nf(false); // unconditional
+                    cpu.regs.set_hf((u & 0x0F) == 0x0F);
+                    cpu.ctx.inst_ctx.cache = @intCast(res);
+                } else {
+                    const u: u16 = v.?;
+                    const res = u +% 1;
+                    cpu.ctx.inst_ctx.cache = res;
+                }
+
+                cpu.ctx.inst_ctx.step = 1;
+            }
+        },
+        1 => {
+            if (src.write(cpu, bus, cpu.ctx.inst_ctx.cache.?) != null) {
+                if (src.is8()) {
+                    cpu.fetch(bus);
+                    cpu.ctx.inst_ctx.step = null;
+                } else {
+                    cpu.ctx.inst_ctx.step = 2;
+                }
+            }
+        },
+        2 => {
+            cpu.fetch(bus);
+            cpu.ctx.inst_ctx.step = null;
+        },
+        else => unreachable,
+    }
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -160,6 +200,59 @@ test "cp" {
     try expect(cpu.regs.nf() == true);
     try expect(cpu.regs.hf() == false);
     try expect(cpu.regs.cf() == false);
+    try expect(cpu.regs.pc == 0xC001);
+}
+
+test "inc" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // src=Reg8, 1-cycle, 1-PC
+    cpu.regs.pc = 0xC000;
+    cpu.regs.b = 0x12;
+    inc(&cpu, &peripherals, .{ .reg8 = .B });
+    inc(&cpu, &peripherals, .{ .reg8 = .B });
+    try expect(cpu.regs.b == 0x13);
+    try expect(cpu.regs.zf() == false);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.hf() == false);
+    try expect(cpu.regs.cf() == false);
+    try expect(cpu.regs.pc == 0xC001);
+
+    cpu.regs.b = 0xFF;
+    inc(&cpu, &peripherals, .{ .reg8 = .B });
+    inc(&cpu, &peripherals, .{ .reg8 = .B });
+    try expect(cpu.regs.b == 0x00);
+    try expect(cpu.regs.zf() == true);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.hf() == true);
+    try expect(cpu.regs.cf() == false);
+    try expect(cpu.regs.pc == 0xC002);
+
+    // src=Indirect, 3-cycle, 1-PC
+    cpu.regs.pc = 0xC000;
+    cpu.regs.write_bc(0xC000);
+    peripherals.write(cpu.regs.bc(), 0x12);
+    inc(&cpu, &peripherals, .{ .indirect = .BC });
+    inc(&cpu, &peripherals, .{ .indirect = .BC });
+    inc(&cpu, &peripherals, .{ .indirect = .BC });
+    try expect(peripherals.read(cpu.regs.bc()) == 0x13);
+    try expect(cpu.regs.zf() == false);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.hf() == false);
+    try expect(cpu.regs.cf() == false);
+    try expect(cpu.regs.pc == 0xC000);
+    inc(&cpu, &peripherals, .{ .indirect = .BC });
+    try expect(cpu.regs.pc == 0xC001);
+
+    // src=Reg16, 2-cycle, 1-PC
+    cpu.regs.pc = 0xC000;
+    cpu.regs.write_bc(0x1234);
+    inc(&cpu, &peripherals, .{ .reg16 = .BC });
+    inc(&cpu, &peripherals, .{ .reg16 = .BC });
+    try expect(cpu.regs.bc() == 0x1235);
+    try expect(cpu.regs.pc == 0xC000);
+    inc(&cpu, &peripherals, .{ .reg16 = .BC });
     try expect(cpu.regs.pc == 0xC001);
 }
 
