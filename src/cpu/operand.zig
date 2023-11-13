@@ -300,7 +300,45 @@ pub const Direct8 = enum(u8) {
         };
     }
 };
-pub const Direct16 = struct {};
+pub const Direct16 = struct {
+    pub fn read16(_: *Cpu, _: *Peripherals, _: Direct16) ?u16 {
+        unreachable;
+    }
+
+    /// Write 16-bit value to memory pointed by the addr pointed by PC 16-bit.
+    /// Consumes 4 cycles.
+    /// Increments PC by 2.
+    pub fn write16(cpu: *Cpu, bus: *Peripherals, val: u16) ?void {
+        return switch (cpu.ctx.mem_ctx.step orelse 0) {
+            0 => blk: {
+                cpu.ctx.mem_ctx.cache = @as(u16, bus.read(cpu.regs.pc));
+                cpu.regs.pc +%= 1;
+                cpu.ctx.mem_ctx.step = 1;
+                break :blk null;
+            },
+            1 => blk: {
+                cpu.ctx.mem_ctx.cache.? |= @as(u16, bus.read(cpu.regs.pc)) << 8;
+                cpu.regs.pc +%= 1;
+                cpu.ctx.mem_ctx.step = 2;
+                break :blk null;
+            },
+            2 => blk: {
+                bus.write(cpu.ctx.mem_ctx.cache.?, @intCast(val & 0xFF));
+                cpu.ctx.mem_ctx.step = 3;
+                break :blk null;
+            },
+            3 => blk: {
+                bus.write(cpu.ctx.mem_ctx.cache.? +% 1, @intCast(val >> 8));
+                cpu.ctx.mem_ctx.step = 4;
+                break :blk null;
+            },
+            4 => {
+                cpu.ctx.mem_ctx.step = null;
+            },
+            else => unreachable,
+        };
+    }
+};
 pub const Cond = enum(u8) { NZ, Z, NC, C };
 
 test "reg8" {
@@ -460,6 +498,36 @@ test "direct8 IO" {
     try expect(Direct8.write8(&cpu, &peripherals, .DFF, 0x99) != null);
     try expect(peripherals.read(0xFF80) == 0x99);
     try expect(cpu.regs.pc == 0xC001);
+}
+
+test "direct16" {
+    const tutil = @import("test_util.zig");
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    cpu.regs.pc = 0xC000;
+    peripherals.write(cpu.regs.pc, 0x80);
+    peripherals.write(cpu.regs.pc + 1, 0xFF);
+    peripherals.write(cpu.regs.pc + 2, 0x80);
+    peripherals.write(cpu.regs.pc + 3, 0xFF);
+
+    try expect(Direct16.write16(&cpu, &peripherals, 0x1234) == null);
+    try expect(Direct16.write16(&cpu, &peripherals, 0x1234) == null);
+    try expect(Direct16.write16(&cpu, &peripherals, 0x1234) == null);
+    try expect(Direct16.write16(&cpu, &peripherals, 0x1234) == null);
+    try expect(Direct16.write16(&cpu, &peripherals, 0x1234) != null);
+    try expect(peripherals.read(0xFF80) == 0x34);
+    try expect(peripherals.read(0xFF81) == 0x12);
+    try expect(cpu.regs.pc == 0xC002);
+
+    try expect(Direct16.write16(&cpu, &peripherals, 0x5678) == null);
+    try expect(Direct16.write16(&cpu, &peripherals, 0x5678) == null);
+    try expect(Direct16.write16(&cpu, &peripherals, 0x5678) == null);
+    try expect(Direct16.write16(&cpu, &peripherals, 0x5678) == null);
+    try expect(Direct16.write16(&cpu, &peripherals, 0x5678) != null);
+    try expect(peripherals.read(0xFF80) == 0x78);
+    try expect(peripherals.read(0xFF81) == 0x56);
+    try expect(cpu.regs.pc == 0xC004);
 }
 
 const expect = @import("std").testing.expect;
