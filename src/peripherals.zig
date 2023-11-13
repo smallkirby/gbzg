@@ -34,7 +34,10 @@ pub const Peripherals = struct {
             0xC000...0xDFFF => self.wram.write(addr, val),
             0xFF50 => self.bootrom.write(addr, val),
             0xFF80...0xFFFE => self.hram.write(addr, val),
-            else => unreachable,
+            else => {
+                @import("std").io.getStdErr().writer().print("Unimplemented peripheral write: 0x{X:0>4} = 0x{X:0>4}\n", .{ addr, val }) catch {};
+                unreachable;
+            },
         };
     }
 };

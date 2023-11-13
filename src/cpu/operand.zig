@@ -5,8 +5,12 @@
 const Peripherals = @import("../peripherals.zig").Peripherals;
 const Cpu = @import("cpu.zig").Cpu;
 
+fn intNullCastU16(x: ?u8) ?u16 {
+    return if (x == null) null else @intCast(x.?);
+}
+
 /// Available operands of instructions
-pub const Operand = union {
+pub const Operand = union(enum) {
     reg8: Reg8,
     imm8: Imm8,
     indirect: Indirect,
@@ -16,27 +20,28 @@ pub const Operand = union {
     imm16: Imm16,
     direct16: Direct16,
 
-    pub fn read(cpu: *Cpu, peripherals: *Peripherals) ?u8 {
-        return switch (operand) {
-            .reg8 => operand.reg8.read(cpu, peripherals),
-            .imm8 => Imm8.read(cpu, peripherals),
-            .indirect => operand.indirect.read(cpu, peripherals),
-            .direct8 => operand.direct8.read(cpu, peripherals),
+    pub fn read(self: @This(), cpu: *Cpu, peripherals: *Peripherals) ?u16 {
+        return switch (self) {
+            .reg8 => intNullCastU16(self.reg8.read(cpu, peripherals)),
+            .imm8 => intNullCastU16(Imm8.read(cpu, peripherals)),
+            .indirect => intNullCastU16(self.indirect.read(cpu, peripherals)),
+            .direct8 => intNullCastU16(self.direct8.read(cpu, peripherals)),
 
-            .reg16 => operand.reg16.read(cpu, peripherals),
+            .reg16 => self.reg16.read(cpu, peripherals),
             .imm16 => Imm16.read(cpu, peripherals),
             .direct16 => Direct16.read(cpu, peripherals),
         };
     }
 
-    pub fn write(cpu: *Cpu, peripherals: *Peripherals, operand: Operand, val: u8) ?void {
-        return switch (operand) {
-            .reg8 => operand.reg8.write(cpu, peripherals, val),
-            .imm8 => Imm8.write(cpu, peripherals, val),
-            .indirect => operand.indirect.write(cpu, peripherals, val),
-            .direct8 => operand.direct8.write(cpu, peripherals, val),
+    pub fn write(self: @This(), cpu: *Cpu, peripherals: *Peripherals, val: u16) ?void {
+        const val8: u8 = @intCast(val & 0xFF);
+        return switch (self) {
+            .reg8 => self.reg8.write(cpu, peripherals, val8),
+            .imm8 => Imm8.write(cpu, peripherals, val8),
+            .indirect => self.indirect.write(cpu, peripherals, val8),
+            .direct8 => self.direct8.write(cpu, peripherals, val8),
 
-            .reg16 => operand.reg16.write(cpu, peripherals, val),
+            .reg16 => self.reg16.write(cpu, peripherals, val),
             .imm16 => Imm16.write(cpu, peripherals, val),
             .direct16 => Direct16.write(cpu, peripherals, val),
         };
