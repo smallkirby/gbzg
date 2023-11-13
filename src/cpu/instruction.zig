@@ -33,6 +33,22 @@ pub fn ld(cpu: *Cpu, bus: *Peripherals, dst: Operand, src: Operand) void {
     }
 }
 
+/// Compare src with A-register.
+/// It subtracts src from A-register, then sets flags according to the result.
+pub fn cp(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
+    const v = src.read(cpu, bus);
+    if (v != null) {
+        const u: u8 = @intCast(v.? & 0xFF);
+        const res = @subWithOverflow(cpu.regs.a, u);
+        cpu.regs.set_zf(res[0] == 0);
+        cpu.regs.set_nf(true); // unconditional
+        cpu.regs.set_hf((cpu.regs.a & 0x0F) < (u & 0x0F));
+        cpu.regs.set_cf(res[1] != 0);
+
+        cpu.fetch(bus);
+    }
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -83,6 +99,68 @@ test "ld" {
     try expect(cpu.regs.pc == 0xC002);
     ld(&cpu, &peripherals, .{ .reg16 = .BC }, .{ .imm16 = .{} });
     try expect(cpu.regs.pc == 0xC003);
+}
+
+test "cp" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // src=Reg8, 1-cycle, 1-PC
+    cpu.regs.pc = 0xC000;
+    cpu.regs.b = 0x12;
+    cpu.regs.a = 0x34;
+    cp(&cpu, &peripherals, .{ .reg8 = .B });
+    try expect(cpu.regs.zf() == false);
+    try expect(cpu.regs.nf() == true);
+    try expect(cpu.regs.hf() == false);
+    try expect(cpu.regs.cf() == false);
+
+    try expect(cpu.regs.pc == 0xC001);
+
+    cpu.regs.b = 0x34;
+    cpu.regs.a = 0x34;
+    cp(&cpu, &peripherals, .{ .reg8 = .B });
+    try expect(cpu.regs.zf() == true);
+    try expect(cpu.regs.nf() == true);
+    try expect(cpu.regs.hf() == false);
+    try expect(cpu.regs.cf() == false);
+
+    cpu.regs.b = 0x35;
+    cpu.regs.a = 0x34;
+    cp(&cpu, &peripherals, .{ .reg8 = .B });
+    try expect(cpu.regs.zf() == false);
+    try expect(cpu.regs.nf() == true);
+    try expect(cpu.regs.hf() == true);
+    try expect(cpu.regs.cf() == true);
+
+    cpu.regs.b = 0x40;
+    cpu.regs.a = 0x34;
+    cp(&cpu, &peripherals, .{ .reg8 = .B });
+    try expect(cpu.regs.zf() == false);
+    try expect(cpu.regs.nf() == true);
+    try expect(cpu.regs.hf() == false);
+    try expect(cpu.regs.cf() == true);
+
+    cpu.regs.b = 0x3F;
+    cpu.regs.a = 0x40;
+    cp(&cpu, &peripherals, .{ .reg8 = .B });
+    try expect(cpu.regs.zf() == false);
+    try expect(cpu.regs.nf() == true);
+    try expect(cpu.regs.hf() == true);
+    try expect(cpu.regs.cf() == false);
+
+    // src=Indirect, 2-cycle, 2-PC
+    cpu.regs.a = 0x12;
+    cpu.regs.pc = 0xC000;
+    cpu.regs.write_bc(0xC000);
+    peripherals.write(cpu.regs.bc(), 0x12);
+    cp(&cpu, &peripherals, .{ .indirect = .BC });
+    cp(&cpu, &peripherals, .{ .indirect = .BC });
+    try expect(cpu.regs.zf() == true);
+    try expect(cpu.regs.nf() == true);
+    try expect(cpu.regs.hf() == false);
+    try expect(cpu.regs.cf() == false);
+    try expect(cpu.regs.pc == 0xC001);
 }
 
 const expect = @import("std").testing.expect;
