@@ -177,18 +177,16 @@ pub const Imm16 = struct {
         while (true) {
             switch (state.step) {
                 0 => blk: {
-                    const v = @as(Operand, .{ .imm8 = .{} }).read(cpu, bus);
-                    if (v != null) {
-                        state.cache = v.?;
+                    if (@as(Operand, .{ .imm8 = .{} }).read(cpu, bus)) |v| {
+                        state.cache = v;
                         state.step = 1;
                         break :blk;
                     }
                     return null;
                 },
                 1 => blk: {
-                    const v = @as(Operand, .{ .imm8 = .{} }).read(cpu, bus);
-                    if (v != null) {
-                        state.cache |= v.? << 8;
+                    if (@as(Operand, .{ .imm8 = .{} }).read(cpu, bus)) |v| {
+                        state.cache |= v << 8;
                         state.step = 2;
                         break :blk;
                     }
@@ -313,9 +311,8 @@ pub const Direct8 = enum(u8) {
         while (true) {
             switch (state.step) {
                 0 => blk: {
-                    const lo = @as(Operand, .{ .imm8 = .{} }).read(cpu, bus);
-                    if (lo != null) {
-                        state.cache = @as(u16, lo.?);
+                    if (@as(Operand, .{ .imm8 = .{} }).read(cpu, bus)) |lo| {
+                        state.cache = @as(u16, lo);
                         switch (self) {
                             .D => state.step = 1,
                             .DFF => {
@@ -328,9 +325,8 @@ pub const Direct8 = enum(u8) {
                     return null;
                 },
                 1 => blk: {
-                    const hi = @as(Operand, .{ .imm8 = .{} }).read(cpu, bus);
-                    if (hi != null) {
-                        state.cache |= @as(u16, hi.?) << 8;
+                    if (@as(Operand, .{ .imm8 = .{} }).read(cpu, bus)) |hi| {
+                        state.cache |= @as(u16, hi) << 8;
                         state.step = 2;
                         break :blk;
                     }
@@ -362,9 +358,8 @@ pub const Direct8 = enum(u8) {
         while (true) {
             switch (state.step) {
                 0 => blk: {
-                    const lo = @as(Operand, .{ .imm8 = .{} }).read(cpu, bus);
-                    if (lo != null) {
-                        state.cache = @as(u16, lo.?);
+                    if (@as(Operand, .{ .imm8 = .{} }).read(cpu, bus)) |lo| {
+                        state.cache = @as(u16, lo);
                         switch (self) {
                             .D => state.step = 1,
                             .DFF => {
@@ -377,9 +372,8 @@ pub const Direct8 = enum(u8) {
                     return null;
                 },
                 1 => blk: {
-                    const hi = @as(Operand, .{ .imm8 = .{} }).read(cpu, bus);
-                    if (hi != null) {
-                        state.cache |= @as(u16, hi.?) << 8;
+                    if (@as(Operand, .{ .imm8 = .{} }).read(cpu, bus)) |hi| {
+                        state.cache |= @as(u16, hi) << 8;
                         state.step = 2;
                         break :blk;
                     }
@@ -418,18 +412,16 @@ pub const Direct16 = struct {
         while (true) {
             switch (state.step) {
                 0 => blk: {
-                    const lo = @as(Operand, .{ .imm8 = .{} }).read(cpu, bus);
-                    if (lo != null) {
-                        state.cache = @as(u16, lo.?);
+                    if (@as(Operand, .{ .imm8 = .{} }).read(cpu, bus)) |lo| {
+                        state.cache = @as(u16, lo);
                         state.step = 1;
                         break :blk;
                     }
                     return null;
                 },
                 1 => blk: {
-                    const hi = @as(Operand, .{ .imm8 = .{} }).read(cpu, bus);
-                    if (hi != null) {
-                        state.cache |= @as(u16, hi.?) << 8;
+                    if (@as(Operand, .{ .imm8 = .{} }).read(cpu, bus)) |hi| {
+                        state.cache |= @as(u16, hi) << 8;
                         state.step = 2;
                         break :blk;
                     }

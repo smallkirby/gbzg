@@ -21,16 +21,15 @@ pub fn ld(cpu: *Cpu, bus: *Peripherals, dst: Operand, src: Operand) void {
     while (true) {
         switch (state.step) {
             0 => blk: {
-                const v = src.read(cpu, bus);
-                if (v != null) {
+                if (src.read(cpu, bus)) |v| {
                     state.step = 1;
-                    state.cache = v.?;
+                    state.cache = v;
                     break :blk;
                 }
                 return;
             },
             1 => blk: {
-                if (dst.write(cpu, bus, state.cache) != null) {
+                if (dst.write(cpu, bus, state.cache)) |_| {
                     state.step = 2;
                     break :blk;
                 }
@@ -49,9 +48,8 @@ pub fn ld(cpu: *Cpu, bus: *Peripherals, dst: Operand, src: Operand) void {
 /// Compare src with A-register.
 /// It subtracts src from A-register, then sets flags according to the result.
 pub fn cp(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
-    const v = src.read(cpu, bus);
-    if (v != null) {
-        const u: u8 = @intCast(v.? & 0xFF);
+    if (src.read(cpu, bus)) |v| {
+        const u: u8 = @intCast(v & 0xFF);
         const res = @subWithOverflow(cpu.regs.a, u);
         cpu.regs.set_zf(res[0] == 0);
         cpu.regs.set_nf(true); // unconditional
@@ -71,17 +69,16 @@ pub fn inc(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
     while (true) {
         switch (state.step) {
             0 => blk: {
-                const v = src.read(cpu, bus);
-                if (v != null) {
+                if (src.read(cpu, bus)) |v| {
                     if (src.is8()) {
-                        const u: u8 = @intCast(v.? & 0xFF);
+                        const u: u8 = @intCast(v & 0xFF);
                         const res = u +% 1;
                         cpu.regs.set_zf(res == 0);
                         cpu.regs.set_nf(false); // unconditional
                         cpu.regs.set_hf((u & 0x0F) == 0x0F);
                         state.cache = @intCast(res);
                     } else {
-                        const u: u16 = v.?;
+                        const u: u16 = v;
                         const res = u +% 1;
                         state.cache = res;
                     }
@@ -92,7 +89,7 @@ pub fn inc(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
                 return;
             },
             1 => {
-                if (src.write(cpu, bus, state.cache) != null) {
+                if (src.write(cpu, bus, state.cache)) |_| {
                     if (src.is8()) {
                         cpu.fetch(bus);
                         state.step = 0;
@@ -121,17 +118,16 @@ pub fn dec(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
     while (true) {
         switch (state.step) {
             0 => blk: {
-                const v = src.read(cpu, bus);
-                if (v != null) {
+                if (src.read(cpu, bus)) |v| {
                     if (src.is8()) {
-                        const u: u8 = @intCast(v.? & 0xFF);
+                        const u: u8 = @intCast(v & 0xFF);
                         const res = u -% 1;
                         cpu.regs.set_zf(res == 0);
                         cpu.regs.set_nf(true); // unconditional
                         cpu.regs.set_hf((u & 0x0F) == 0);
                         state.cache = @intCast(res);
                     } else {
-                        const u: u16 = v.?;
+                        const u: u16 = v;
                         const res = u -% 1;
                         state.cache = res;
                     }
@@ -142,7 +138,7 @@ pub fn dec(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
                 return;
             },
             1 => {
-                if (src.write(cpu, bus, state.cache) != null) {
+                if (src.write(cpu, bus, state.cache)) |_| {
                     if (src.is8()) {
                         cpu.fetch(bus);
                         state.step = 0;
@@ -172,9 +168,8 @@ pub fn rl(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
     while (true) {
         switch (state.step) {
             0 => blk: {
-                const s = src.read(cpu, bus);
-                if (s != null) {
-                    const u: u8 = @intCast(s.? & 0xFF);
+                if (src.read(cpu, bus)) |s| {
+                    const u: u8 = @intCast(s & 0xFF);
                     const v = (u << 1) | @intFromBool(cpu.regs.cf());
                     cpu.regs.set_zf(v == 0);
                     cpu.regs.set_nf(false); // unconditional
@@ -187,7 +182,7 @@ pub fn rl(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
                 return;
             },
             1 => {
-                if (src.write(cpu, bus, @intCast(state.cache)) != null) {
+                if (src.write(cpu, bus, @intCast(state.cache))) |_| {
                     cpu.fetch(bus);
                     state.step = 0;
                 }
@@ -200,9 +195,8 @@ pub fn rl(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
 
 /// Check if num-th bit of src is NOT set.
 pub fn bit(cpu: *Cpu, bus: *Peripherals, nth: u3, src: Operand) void {
-    const s = src.read(cpu, bus);
-    if (s != null) {
-        const u: u8 = @intCast(s.? & 0xFF);
+    if (src.read(cpu, bus)) |s| {
+        const u: u8 = @intCast(s & 0xFF);
         cpu.regs.set_zf((u & (@as(u8, 1) << nth)) == 0);
         cpu.regs.set_nf(false); // unconditional
         cpu.regs.set_hf(true); // unconditional
@@ -266,7 +260,7 @@ pub fn push(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
                 break :blk;
             },
             1 => blk: {
-                if (push16(cpu, bus, state.cache) != null) {
+                if (push16(cpu, bus, state.cache)) |_| {
                     state.step = 2;
                     break :blk;
                 }
@@ -313,9 +307,8 @@ pub fn pop16(cpu: *Cpu, bus: *Peripherals) ?u16 {
 
 /// Pop a 16-bit value from the stack.
 pub fn pop(cpu: *Cpu, bus: *Peripherals, dst: Operand) void {
-    const v = pop16(cpu, bus);
-    if (v != null) {
-        dst.write(cpu, bus, v.?).?;
+    if (pop16(cpu, bus)) |v| {
+        dst.write(cpu, bus, v).?;
         cpu.fetch(bus);
     }
 }
@@ -328,9 +321,8 @@ pub fn jr(cpu: *Cpu, bus: *Peripherals) void {
     };
     switch (state.step) {
         0 => {
-            const v = @as(Operand, .{ .imm8 = .{} }).read(cpu, bus);
-            if (v != null) {
-                const int8: i8 = @intCast(v.? & 0xFF);
+            if (@as(Operand, .{ .imm8 = .{} }).read(cpu, bus)) |v| {
+                const int8: i8 = @intCast(v & 0xFF);
                 cpu.regs.pc +%= @as(u16, @intCast(int8));
                 state.step = 1;
             }
@@ -364,11 +356,10 @@ pub fn jrc(cpu: *Cpu, bus: *Peripherals, c: Cond) void {
     while (true) {
         switch (state.step) {
             0 => blk: {
-                const v = @as(Operand, .{ .imm8 = .{} }).read(cpu, bus);
-                if (v != null) {
+                if (@as(Operand, .{ .imm8 = .{} }).read(cpu, bus)) |v| {
                     state.step = 1;
                     if (cond(cpu, c)) {
-                        const int8: i8 = @intCast(v.? & 0xFF);
+                        const int8: i8 = @intCast(v & 0xFF);
                         cpu.regs.pc +%= @as(u16, @intCast(int8));
                         return;
                     }
@@ -396,16 +387,15 @@ pub fn call(cpu: *Cpu, bus: *Peripherals) void {
     while (true) {
         switch (state.step) {
             0 => blk: {
-                const v = @as(Operand, .{ .imm16 = .{} }).read(cpu, bus);
-                if (v != null) {
-                    state.cache = v.?;
+                if (@as(Operand, .{ .imm16 = .{} }).read(cpu, bus)) |v| {
+                    state.cache = v;
                     state.step = 1;
                     break :blk;
                 }
                 return;
             },
             1 => {
-                if (push16(cpu, bus, cpu.regs.pc) != null) {
+                if (push16(cpu, bus, cpu.regs.pc)) |_| {
                     cpu.regs.pc = state.cache;
                     state.step = 0;
                     cpu.fetch(bus);
@@ -427,9 +417,8 @@ pub fn ret(cpu: *Cpu, bus: *Peripherals) void {
 
     switch (state.step) {
         0 => {
-            const v = pop16(cpu, bus);
-            if (v != null) {
-                cpu.regs.pc = v.?;
+            if (pop16(cpu, bus)) |v| {
+                cpu.regs.pc = v;
                 state.step = 1;
             }
             return;
