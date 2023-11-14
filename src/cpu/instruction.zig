@@ -319,6 +319,31 @@ pub fn pop(cpu: *Cpu, bus: *Peripherals, dst: Operand) void {
     }
 }
 
+/// Relative jump by Imm8.
+pub fn jr(cpu: *Cpu, bus: *Peripherals) void {
+    const state = struct {
+        var step: usize = 0;
+        var cache: u8 = 0;
+    };
+    switch (state.step) {
+        0 => {
+            const v = @as(Operand, .{ .imm8 = .{} }).read(cpu, bus);
+            if (v != null) {
+                const int8: i8 = @intCast(v.? & 0xFF);
+                cpu.regs.pc +%= @as(u16, @intCast(int8));
+                state.step = 1;
+            }
+            return;
+        },
+        1 => {
+            state.step = 0;
+            cpu.fetch(bus);
+            return;
+        },
+        else => unreachable,
+    }
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -609,6 +634,19 @@ test "pop" {
     try expect(cpu.regs.sp == 0xC100 + 2);
     try expect(cpu.regs.bc() == 0x1234);
     try expect(cpu.regs.pc == 0xC001);
+}
+
+test "jr" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // 3-cycle
+    cpu.regs.pc = 0xC000;
+    peripherals.write(cpu.regs.pc, 0x23);
+    for (0..3) |_| {
+        jr(&cpu, &peripherals);
+    }
+    try expect(cpu.regs.pc == 0xC025); // +0x23 for jump, +0x01 for Imm8, +0x01 for fetch. Is it right? TODO
 }
 
 const expect = @import("std").testing.expect;
