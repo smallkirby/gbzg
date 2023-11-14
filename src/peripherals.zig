@@ -1,18 +1,21 @@
 const Bootrom = @import("bootrom.zig").Bootrom;
 const HRam = @import("hram.zig").HRam;
 const WRam = @import("wram.zig").WRam;
+const Ppu = @import("ppu.zig").Ppu;
 
 /// Periperal devices and MMIO handler
 pub const Peripherals = struct {
     bootrom: Bootrom,
     hram: HRam,
     wram: WRam,
+    ppu: Ppu,
 
     pub fn new(bootrom: Bootrom) !Peripherals {
         return Peripherals{
             .bootrom = bootrom,
             .hram = try HRam.new(),
             .wram = try WRam.new(),
+            .ppu = try Ppu.new(),
         };
     }
 
@@ -23,7 +26,10 @@ pub const Peripherals = struct {
             } else {
                 unreachable;
             },
+            0x8000...0x9FFF => self.ppu.read(addr),
             0xC000...0xDFFF => self.wram.read(addr),
+            0xFE00...0xFE9F => self.ppu.read(addr),
+            0xFF40...0xFF4B => self.ppu.read(addr),
             0xFF80...0xFFFE => self.hram.read(addr),
             else => unreachable,
         };
@@ -31,7 +37,10 @@ pub const Peripherals = struct {
 
     pub fn write(self: *Peripherals, addr: u16, val: u8) void {
         return switch (addr) {
+            0x8000...0x9FFF => self.ppu.write(addr, val),
             0xC000...0xDFFF => self.wram.write(addr, val),
+            0xFE00...0xFE9F => self.ppu.write(addr, val),
+            0xFF40...0xFF4B => self.ppu.write(addr, val),
             0xFF50 => self.bootrom.write(addr, val),
             0xFF80...0xFFFE => self.hram.write(addr, val),
             else => {
