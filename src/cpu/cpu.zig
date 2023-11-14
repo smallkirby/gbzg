@@ -1,6 +1,7 @@
 const Registers = @import("register.zig").Registers;
 const Peripherals = @import("../peripherals.zig").Peripherals;
 const Opcode = @import("instruction.zig").Opcode;
+const decodes = @import("decode.zig");
 
 /// Context necessary to handle multi-cycle instructions
 const Ctx = struct {
@@ -29,20 +30,20 @@ pub const Cpu = struct {
         };
     }
 
-    pub fn fetch(self: *Cpu, bus: *Peripherals) void {
+    /// Fetch the next opcode and increment the PC
+    pub fn fetch(self: *@This(), bus: *Peripherals) void {
         self.ctx.opcode = bus.read(self.regs.pc);
         self.regs.pc +%= 1;
         self.ctx.cb = false;
     }
 
-    pub fn decode(self: *Cpu, bus: *Peripherals) void {
-        switch (self.ctx.opcode) {
-            0x00 => self.nop(bus),
-            else => @compileError("Unimplemented opcode"),
-        }
+    /// Decode the current opcode then execute it
+    pub fn decode(self: *@This(), bus: *Peripherals) void {
+        return decodes.decode(self, bus);
     }
 
-    pub fn emulate_cycle(self: *Cpu, bus: *Peripherals) void {
+    /// Emulate a single cycle
+    pub fn emulate_cycle(self: *@This(), bus: *Peripherals) void {
         self.decode(bus);
     }
 };
