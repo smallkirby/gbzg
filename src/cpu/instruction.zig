@@ -281,6 +281,44 @@ pub fn push(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
     }
 }
 
+/// Pop a 16-bit value from the stack.
+/// Somehwat internal function.
+pub fn pop16(cpu: *Cpu, bus: *Peripherals) ?u16 {
+    const state = struct {
+        var step: usize = 0;
+        var cache: u16 = 0;
+    };
+
+    switch (state.step) {
+        0 => {
+            state.cache = bus.read(cpu.regs.sp);
+            cpu.regs.sp +%= 1;
+            state.step = 1;
+            return null;
+        },
+        1 => {
+            state.cache |= @as(u16, bus.read(cpu.regs.sp)) << 8;
+            cpu.regs.sp +%= 1;
+            state.step = 2;
+            return null;
+        },
+        2 => {
+            state.step = 0;
+            return state.cache;
+        },
+        else => unreachable,
+    }
+}
+
+/// Pop a 16-bit value from the stack.
+pub fn pop(cpu: *Cpu, bus: *Peripherals, dst: Operand) void {
+    const v = pop16(cpu, bus);
+    if (v != null) {
+        dst.write(cpu, bus, v.?).?;
+        cpu.fetch(bus);
+    }
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -553,6 +591,23 @@ test "push" {
     try expect(cpu.regs.sp == 0xC100 - 2);
     try expect(peripherals.read(cpu.regs.sp + 0) == 0x34);
     try expect(peripherals.read(cpu.regs.sp + 1) == 0x12);
+    try expect(cpu.regs.pc == 0xC001);
+}
+
+test "pop" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // dst=Reg16, 3-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.sp = 0xC100;
+    peripherals.write(cpu.regs.sp + 0, 0x34);
+    peripherals.write(cpu.regs.sp + 1, 0x12);
+    for (0..3) |_| {
+        pop(&cpu, &peripherals, .{ .reg16 = .BC });
+    }
+    try expect(cpu.regs.sp == 0xC100 + 2);
+    try expect(cpu.regs.bc() == 0x1234);
     try expect(cpu.regs.pc == 0xC001);
 }
 
