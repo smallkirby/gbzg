@@ -210,6 +210,77 @@ pub fn bit(cpu: *Cpu, bus: *Peripherals, nth: u3, src: Operand) void {
     }
 }
 
+/// Push a 16-bit val to the stack.
+/// Note that this instruction consumes additional 1 cycle.
+/// Somewhat internal function.
+pub fn push16(cpu: *Cpu, bus: *Peripherals, val: u16) ?void {
+    const state = struct {
+        var step: usize = 0;
+        var cache: u8 = 0;
+    };
+
+    return switch (state.step) {
+        0 => {
+            state.step = 1; // consume cycle
+            return null;
+        },
+        1 => {
+            const lo: u8 = @intCast(val & 0xFF);
+            const hi: u8 = @intCast(val >> 8);
+            cpu.regs.sp -%= 1;
+            bus.write(cpu.regs.sp, hi);
+
+            state.cache = lo;
+            state.step = 2;
+            return null;
+        },
+        2 => {
+            cpu.regs.sp -%= 1;
+            bus.write(cpu.regs.sp, @intCast(state.cache));
+
+            state.step = 3;
+            return null;
+        },
+        3 => {
+            state.step = 0;
+            return;
+        },
+        else => unreachable,
+    };
+}
+
+/// Push a 16-bit src to the stack.
+/// Note that this instruction consumes additional 1 cycle.
+/// Consumes 4-cycle in total.
+pub fn push(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
+    const state = struct {
+        var step: usize = 0;
+        var cache: u16 = 0;
+    };
+    while (true) {
+        switch (state.step) {
+            0 => blk: {
+                state.cache = src.read(cpu, bus).?;
+                state.step = 1;
+                break :blk;
+            },
+            1 => blk: {
+                if (push16(cpu, bus, state.cache) != null) {
+                    state.step = 2;
+                    break :blk;
+                }
+                return;
+            },
+            2 => {
+                state.step = 0;
+                cpu.fetch(bus);
+                return;
+            },
+            else => unreachable,
+        }
+    }
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -442,7 +513,7 @@ test "bit" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
 
-    // src=Reg8, 2-cycle (+1 for decode)
+    // src=Reg8, 1-cycle (+1 for decode)
     cpu.regs.pc = 0xC000;
     cpu.regs.a = 0x12;
     for (0..1) |_| {
@@ -465,6 +536,23 @@ test "bit" {
     try expect(cpu.regs.nf() == false);
     try expect(cpu.regs.hf() == true);
     try expect(cpu.regs.cf() == false);
+    try expect(cpu.regs.pc == 0xC001);
+}
+
+test "push" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // src=Reg16, 4-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.sp = 0xC100;
+    cpu.regs.write_bc(0x1234);
+    for (0..4) |_| {
+        push(&cpu, &peripherals, .{ .reg16 = .BC });
+    }
+    try expect(cpu.regs.sp == 0xC100 - 2);
+    try expect(peripherals.read(cpu.regs.sp + 0) == 0x34);
+    try expect(peripherals.read(cpu.regs.sp + 1) == 0x12);
     try expect(cpu.regs.pc == 0xC001);
 }
 
