@@ -386,6 +386,37 @@ pub fn jrc(cpu: *Cpu, bus: *Peripherals, c: Cond) void {
     }
 }
 
+/// Push Imm16 to the stack, then jump to Imm16.
+pub fn call(cpu: *Cpu, bus: *Peripherals) void {
+    const state = struct {
+        var step: usize = 0;
+        var cache: u16 = 0;
+    };
+
+    while (true) {
+        switch (state.step) {
+            0 => blk: {
+                const v = @as(Operand, .{ .imm16 = .{} }).read(cpu, bus);
+                if (v != null) {
+                    state.cache = v.?;
+                    state.step = 1;
+                    break :blk;
+                }
+                return;
+            },
+            1 => {
+                if (push16(cpu, bus, cpu.regs.pc) != null) {
+                    cpu.regs.pc = state.cache;
+                    state.step = 0;
+                    cpu.fetch(bus);
+                }
+                return;
+            },
+            else => unreachable,
+        }
+    }
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -712,6 +743,24 @@ test "jrc" {
         jrc(&cpu, &peripherals, .Z);
     }
     try expect(cpu.regs.pc == 0xC002); // +0x01 for Imm8, +0x01 for fetch. Is it right? TODO
+}
+
+test "call" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // 6-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.sp = 0xC100;
+    peripherals.write(cpu.regs.pc, 0x30);
+    peripherals.write(cpu.regs.pc + 1, 0xC0);
+    for (0..6) |_| {
+        call(&cpu, &peripherals);
+    }
+    try expect(cpu.regs.sp == 0xC100 - 2);
+    try expect(peripherals.read(cpu.regs.sp + 0) == 0x02); // +2 for Imm16. Is it right? TODO
+    try expect(peripherals.read(cpu.regs.sp + 1) == 0xC0);
+    try expect(cpu.regs.pc == 0xC030 + 1); // +1 for fetch. Is it right? TODO
 }
 
 const expect = @import("std").testing.expect;
