@@ -5,6 +5,7 @@ const Cpu = @import("cpu.zig").Cpu;
 const Registers = @import("register.zig").Registers;
 const Peripherals = @import("../peripherals.zig").Peripherals;
 const Operand = @import("operand.zig").Operand;
+const Cond = @import("operand.zig").Cond;
 
 /// Do nothing. Just fetch the next instruction.
 pub fn nop(cpu: *Cpu, bus: *Peripherals) void {
@@ -344,6 +345,47 @@ pub fn jr(cpu: *Cpu, bus: *Peripherals) void {
     }
 }
 
+fn cond(cpu: *Cpu, c: Cond) bool {
+    return switch (c) {
+        .NZ => !cpu.regs.zf(),
+        .Z => cpu.regs.zf(),
+        .NC => !cpu.regs.cf(),
+        .C => cpu.regs.cf(),
+    };
+}
+
+/// Conditional relative jump by Imm8.
+/// Consumes 3-cycle if condition is met, otherwise 2-cycle.
+pub fn jrc(cpu: *Cpu, bus: *Peripherals, c: Cond) void {
+    const state = struct {
+        var step: usize = 0;
+        var cache: u8 = 0;
+    };
+    while (true) {
+        switch (state.step) {
+            0 => blk: {
+                const v = @as(Operand, .{ .imm8 = .{} }).read(cpu, bus);
+                if (v != null) {
+                    state.step = 1;
+                    if (cond(cpu, c)) {
+                        const int8: i8 = @intCast(v.? & 0xFF);
+                        cpu.regs.pc +%= @as(u16, @intCast(int8));
+                        return;
+                    }
+                    break :blk;
+                }
+                return;
+            },
+            1 => {
+                state.step = 0;
+                cpu.fetch(bus);
+                return;
+            },
+            else => unreachable,
+        }
+    }
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -647,6 +689,29 @@ test "jr" {
         jr(&cpu, &peripherals);
     }
     try expect(cpu.regs.pc == 0xC025); // +0x23 for jump, +0x01 for Imm8, +0x01 for fetch. Is it right? TODO
+}
+
+test "jrc" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // 3-cycle if condition is met
+    cpu.regs.pc = 0xC000;
+    cpu.regs.set_zf(false);
+    peripherals.write(cpu.regs.pc, 0x23);
+    for (0..3) |_| {
+        jrc(&cpu, &peripherals, .NZ);
+    }
+    try expect(cpu.regs.pc == 0xC025); // +0x23 for jump, +0x01 for Imm8, +0x01 for fetch. Is it right? TODO
+
+    // 2-cycle if condition is not met
+    cpu.regs.pc = 0xC000;
+    cpu.regs.set_zf(false);
+    peripherals.write(cpu.regs.pc, 0x23);
+    for (0..2) |_| {
+        jrc(&cpu, &peripherals, .Z);
+    }
+    try expect(cpu.regs.pc == 0xC002); // +0x01 for Imm8, +0x01 for fetch. Is it right? TODO
 }
 
 const expect = @import("std").testing.expect;
