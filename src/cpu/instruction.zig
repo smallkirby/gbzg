@@ -156,6 +156,25 @@ pub fn rl(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
     }
 }
 
+/// Check if num-th bit of src is NOT set.
+pub fn bit(cpu: *Cpu, bus: *Peripherals, nth: u3, src: Operand) void {
+    switch (cpu.ctx.inst_ctx.step orelse 0) {
+        0 => {
+            const s = src.read(cpu, bus);
+            if (s != null) {
+                const u: u8 = @intCast(s.? & 0xFF);
+                cpu.regs.set_zf((u & (@as(u8, 1) << nth)) == 0);
+                cpu.regs.set_nf(false); // unconditional
+                cpu.regs.set_hf(true); // unconditional
+                cpu.ctx.inst_ctx.step = null;
+
+                cpu.fetch(bus);
+            }
+        },
+        else => unreachable,
+    }
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -397,6 +416,36 @@ test "rl" {
     try expect(cpu.regs.nf() == false);
     try expect(cpu.regs.hf() == false);
     try expect(cpu.regs.cf() == true);
+    try expect(cpu.regs.pc == 0xC001);
+}
+
+test "bit" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // src=Reg8, 2-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.a = 0x12;
+    for (0..1) |_| {
+        bit(&cpu, &peripherals, 1, .{ .reg8 = .A });
+    }
+    try expect(cpu.regs.zf() == false);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.hf() == true);
+    try expect(cpu.regs.cf() == false);
+    try expect(cpu.regs.pc == 0xC001);
+
+    // src=Indirect, 3
+    cpu.regs.pc = 0xC000;
+    cpu.regs.write_bc(0xC000);
+    peripherals.write(cpu.regs.bc(), 0x40);
+    for (0..2) |_| {
+        bit(&cpu, &peripherals, 7, .{ .indirect = .BC });
+    }
+    try expect(cpu.regs.zf() == true);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.hf() == true);
+    try expect(cpu.regs.cf() == false);
     try expect(cpu.regs.pc == 0xC001);
 }
 
