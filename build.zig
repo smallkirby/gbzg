@@ -22,7 +22,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = .{ .path = "src/main.zig" },
         .target = target,
         .optimize = optimize,
-        .link_libc = true,
+        .link_libc = false,
     });
 
     // This declares intent for the executable to be installed into the
@@ -59,7 +59,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = .{ .path = "src/test.zig" },
         .target = target,
         .optimize = optimize,
-        .link_libc = true,
+        .link_libc = false,
     });
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
