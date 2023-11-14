@@ -129,6 +129,33 @@ pub fn dec(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
     }
 }
 
+/// Bit shift src and append C-flag to the least significant bit.
+/// Then set flags according to the result if necessary.
+pub fn rl(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
+    switch (cpu.ctx.inst_ctx.step orelse 0) {
+        0 => {
+            const s = src.read(cpu, bus);
+            if (s != null) {
+                const u: u8 = @intCast(s.? & 0xFF);
+                const v = (u << 1) | @intFromBool(cpu.regs.cf());
+                cpu.regs.set_zf(v == 0);
+                cpu.regs.set_nf(false); // unconditional
+                cpu.regs.set_hf(false); // unconditional
+                cpu.regs.set_cf((u & 0x80) != 0);
+                cpu.ctx.inst_ctx.cache = @intCast(v);
+                cpu.ctx.inst_ctx.step = 1;
+            }
+        },
+        1 => {
+            if (src.write(cpu, bus, cpu.ctx.inst_ctx.cache.?) != null) {
+                cpu.fetch(bus);
+                cpu.ctx.inst_ctx.step = null;
+            }
+        },
+        else => unreachable,
+    }
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -336,6 +363,40 @@ test "dec" {
     try expect(cpu.regs.cf() == false);
     try expect(cpu.regs.pc == 0xC000);
     dec(&cpu, &peripherals, .{ .indirect = .BC });
+    try expect(cpu.regs.pc == 0xC001);
+}
+
+test "rl" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // src=Reg8, 1-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.a = 0x12;
+    cpu.regs.set_cf(true);
+    for (0..2) |_| {
+        rl(&cpu, &peripherals, .{ .reg8 = .A });
+    }
+    try expect(cpu.regs.a == 0x25);
+    try expect(cpu.regs.zf() == false);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.hf() == false);
+    try expect(cpu.regs.cf() == false);
+    try expect(cpu.regs.pc == 0xC001);
+
+    // src=Indirect, 3-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.write_bc(0xC000);
+    peripherals.write(cpu.regs.bc(), 0x80);
+    cpu.regs.set_cf(false);
+    for (0..4) |_| {
+        rl(&cpu, &peripherals, .{ .indirect = .BC });
+    }
+    try expect(peripherals.read(cpu.regs.bc()) == 0x00);
+    try expect(cpu.regs.zf() == true);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.hf() == false);
+    try expect(cpu.regs.cf() == true);
     try expect(cpu.regs.pc == 0xC001);
 }
 
