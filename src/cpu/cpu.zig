@@ -53,7 +53,7 @@ pub const Cpu = struct {
 };
 
 test "Basic fetch" {
-    var peripherals = try t_init_peripherals();
+    var peripherals = try tutil.t_init_peripherals();
     var cpu = Cpu.new();
 
     cpu.regs.pc = 0xC000; // WRAM
@@ -62,13 +62,5 @@ test "Basic fetch" {
     try expect(cpu.regs.pc == 0xC001);
 }
 
-fn t_init_peripherals() !Peripherals {
-    const Bootrom = @import("../bootrom.zig").Bootrom;
-    var img = [_]u8{ 0x00, 0x00 };
-    const bootram = Bootrom.new(&img);
-    var peripherals = try Peripherals.new(bootram);
-
-    return peripherals;
-}
-
 const expect = @import("std").testing.expect;
+const tutil = @import("test_util.zig");
