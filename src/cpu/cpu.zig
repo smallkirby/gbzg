@@ -8,29 +8,11 @@ const Ctx = struct {
     opcode: u8,
     /// Now parsing 0xCB prefixed instructions
     cb: bool,
-    /// multi-cycle information for memory IO
-    mem_ctx: StepInfo,
-    /// multi-cycle information for instructions
-    inst_ctx: StepInfo,
 
     pub fn new() Ctx {
         return Ctx{
             .opcode = 0,
             .cb = false,
-            .mem_ctx = StepInfo.new(),
-            .inst_ctx = StepInfo.new(),
-        };
-    }
-};
-
-const StepInfo = struct {
-    step: ?u8,
-    cache: ?u16,
-
-    pub fn new() StepInfo {
-        return StepInfo{
-            .step = null,
-            .cache = null,
         };
     }
 };
