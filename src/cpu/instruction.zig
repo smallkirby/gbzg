@@ -417,6 +417,32 @@ pub fn call(cpu: *Cpu, bus: *Peripherals) void {
     }
 }
 
+/// Pop a 16-bit value from the stack, then jump to it.
+/// Note that this instruction consumes additional 1 cycle.
+pub fn ret(cpu: *Cpu, bus: *Peripherals) void {
+    const state = struct {
+        var step: usize = 0;
+        var cache: u16 = 0;
+    };
+
+    switch (state.step) {
+        0 => {
+            const v = pop16(cpu, bus);
+            if (v != null) {
+                cpu.regs.pc = v.?;
+                state.step = 1;
+            }
+            return;
+        },
+        1 => {
+            state.step = 0;
+            cpu.fetch(bus);
+            return;
+        },
+        else => unreachable,
+    }
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -760,6 +786,22 @@ test "call" {
     try expect(cpu.regs.sp == 0xC100 - 2);
     try expect(peripherals.read(cpu.regs.sp + 0) == 0x02); // +2 for Imm16. Is it right? TODO
     try expect(peripherals.read(cpu.regs.sp + 1) == 0xC0);
+    try expect(cpu.regs.pc == 0xC030 + 1); // +1 for fetch. Is it right? TODO
+}
+
+test "ret" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // 4-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.sp = 0xC100;
+    peripherals.write(cpu.regs.sp + 0, 0x30);
+    peripherals.write(cpu.regs.sp + 1, 0xC0);
+    for (0..4) |_| {
+        ret(&cpu, &peripherals);
+    }
+    try expect(cpu.regs.sp == 0xC100 + 2);
     try expect(cpu.regs.pc == 0xC030 + 1); // +1 for fetch. Is it right? TODO
 }
 
