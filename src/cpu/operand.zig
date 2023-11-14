@@ -140,16 +140,20 @@ pub const Imm8 = struct {
     /// Consumes 1 cycle.
     /// Increments PC by 1.
     pub fn read(cpu: *Cpu, bus: *Peripherals) ?u8 {
-        return switch (cpu.ctx.mem_ctx.step orelse 0) {
+        const state = struct {
+            var step: usize = 0;
+            var cache: u8 = 0;
+        };
+        return switch (state.step) {
             0 => blk: {
-                cpu.ctx.mem_ctx.cache = @as(u16, bus.read(cpu.regs.pc));
-                cpu.ctx.mem_ctx.step = 1;
+                state.cache = @as(u8, bus.read(cpu.regs.pc) & 0xFF);
                 cpu.regs.pc +%= 1;
+                state.step = 1;
                 break :blk null;
             },
             1 => blk: {
-                cpu.ctx.mem_ctx.step = null;
-                break :blk @as(u8, @intCast(cpu.ctx.mem_ctx.cache.? & 0xFF));
+                state.step = 0;
+                break :blk state.cache;
             },
             else => unreachable,
         };
@@ -166,25 +170,37 @@ pub const Imm16 = struct {
     /// Consumes 2 cycles.
     /// Increments PC by 2.
     pub fn read(cpu: *Cpu, bus: *Peripherals) ?u16 {
-        return switch (cpu.ctx.mem_ctx.step orelse 0) {
-            0 => blk: {
-                cpu.ctx.mem_ctx.cache = bus.read(cpu.regs.pc);
-                cpu.ctx.mem_ctx.step = 1;
-                cpu.regs.pc +%= 1;
-                break :blk null;
-            },
-            1 => blk: {
-                cpu.ctx.mem_ctx.cache.? |= @as(u16, bus.read(cpu.regs.pc)) << 8;
-                cpu.ctx.mem_ctx.step = 2;
-                cpu.regs.pc +%= 1;
-                break :blk null;
-            },
-            2 => blk: {
-                cpu.ctx.mem_ctx.step = null;
-                break :blk cpu.ctx.mem_ctx.cache.?;
-            },
-            else => unreachable,
+        const state = struct {
+            var step: usize = 0;
+            var cache: u16 = 0;
         };
+        while (true) {
+            switch (state.step) {
+                0 => blk: {
+                    const v = @as(Operand, .{ .imm8 = .{} }).read(cpu, bus);
+                    if (v != null) {
+                        state.cache = v.?;
+                        state.step = 1;
+                        break :blk;
+                    }
+                    return null;
+                },
+                1 => blk: {
+                    const v = @as(Operand, .{ .imm8 = .{} }).read(cpu, bus);
+                    if (v != null) {
+                        state.cache |= v.? << 8;
+                        state.step = 2;
+                        break :blk;
+                    }
+                    return null;
+                },
+                2 => {
+                    state.step = 0;
+                    return state.cache;
+                },
+                else => unreachable,
+            }
+        }
     }
 
     pub fn write(_: *Cpu, _: *Peripherals, _: u16) void {
@@ -204,64 +220,79 @@ pub const Indirect = enum(u8) {
     /// Read 8-bit value from memory pointed by register pair.
     /// Consumes 1 cycle.
     pub fn read(self: @This(), cpu: *Cpu, bus: *Peripherals) ?u8 {
-        return switch (cpu.ctx.mem_ctx.step orelse 0) {
-            0 => blk: {
-                cpu.ctx.mem_ctx.cache = switch (self) {
-                    .BC => bus.read(cpu.regs.bc()),
-                    .DE => bus.read(cpu.regs.de()),
-                    .HL => bus.read(cpu.regs.hl()),
-                    .CFF => bus.read(0xFF00 | @as(u16, cpu.regs.c)),
-                    .HLD => inn: {
-                        const addr = cpu.regs.hl();
-                        cpu.regs.write_hl(addr -% 1);
-                        break :inn bus.read(addr);
-                    },
-                    .HLI => inn: {
-                        const addr = cpu.regs.hl();
-                        cpu.regs.write_hl(addr +% 1);
-                        break :inn bus.read(addr);
-                    },
-                };
-                cpu.ctx.mem_ctx.step = 1;
-                break :blk null;
-            },
-            1 => blk: {
-                cpu.ctx.mem_ctx.step = null;
-                break :blk @intCast(cpu.ctx.mem_ctx.cache.? & 0xFF);
-            },
-            else => unreachable,
+        const state = struct {
+            var step: usize = 0;
+            var cache: u8 = 0;
         };
+
+        while (true) {
+            switch (state.step) {
+                0 => {
+                    state.cache = @as(u8, switch (self) {
+                        .BC => bus.read(cpu.regs.bc()),
+                        .DE => bus.read(cpu.regs.de()),
+                        .HL => bus.read(cpu.regs.hl()),
+                        .CFF => bus.read(0xFF00 | @as(u16, cpu.regs.c)),
+                        .HLD => inn: {
+                            const addr = cpu.regs.hl();
+                            cpu.regs.write_hl(addr -% 1);
+                            break :inn bus.read(addr);
+                        },
+                        .HLI => inn: {
+                            const addr = cpu.regs.hl();
+                            cpu.regs.write_hl(addr +% 1);
+                            break :inn bus.read(addr);
+                        },
+                    });
+                    state.step = 1;
+                    return null;
+                },
+                1 => {
+                    state.step = 0;
+                    return state.cache;
+                },
+                else => unreachable,
+            }
+        }
     }
 
     /// Write 8-bit value to memory pointed by register pair.
     /// Consumes 1 cycle.
     pub fn write(self: @This(), cpu: *Cpu, bus: *Peripherals, val: u8) ?void {
-        return switch (cpu.ctx.mem_ctx.step orelse 0) {
-            0 => blk: {
-                switch (self) {
-                    .BC => bus.write(cpu.regs.bc(), val),
-                    .DE => bus.write(cpu.regs.de(), val),
-                    .HL => bus.write(cpu.regs.hl(), val),
-                    .CFF => bus.write(0xFF00 | @as(u16, cpu.regs.c), val),
-                    .HLD => {
-                        const addr = cpu.regs.hl();
-                        cpu.regs.write_hl(addr -% 1);
-                        bus.write(addr, val);
-                    },
-                    .HLI => {
-                        const addr = cpu.regs.hl();
-                        cpu.regs.write_hl(addr +% 1);
-                        bus.write(addr, val);
-                    },
-                }
-                cpu.ctx.mem_ctx.step = 1;
-                break :blk null;
-            },
-            1 => {
-                cpu.ctx.mem_ctx.step = null;
-            },
-            else => unreachable,
+        const state = struct {
+            var step: usize = 0;
+            var cache: u8 = 0;
         };
+
+        while (true) {
+            switch (state.step) {
+                0 => {
+                    switch (self) {
+                        .BC => bus.write(cpu.regs.bc(), val),
+                        .DE => bus.write(cpu.regs.de(), val),
+                        .HL => bus.write(cpu.regs.hl(), val),
+                        .CFF => bus.write(0xFF00 | @as(u16, cpu.regs.c), val),
+                        .HLD => {
+                            const addr = cpu.regs.hl();
+                            cpu.regs.write_hl(addr -% 1);
+                            bus.write(addr, val);
+                        },
+                        .HLI => {
+                            const addr = cpu.regs.hl();
+                            cpu.regs.write_hl(addr +% 1);
+                            bus.write(addr, val);
+                        },
+                    }
+                    state.step = 1;
+                    return null;
+                },
+                1 => {
+                    state.step = 0;
+                    return;
+                },
+                else => unreachable,
+            }
+        }
     }
 };
 
@@ -274,71 +305,98 @@ pub const Direct8 = enum(u8) {
     /// Consumes 3 cycles for D, 2 cycles for DFF.
     /// Increments PC by 2 for D, 1 for DFF.
     pub fn read(self: @This(), cpu: *Cpu, bus: *Peripherals) ?u8 {
-        return switch (cpu.ctx.mem_ctx.step orelse 0) {
-            0 => blk: {
-                cpu.ctx.mem_ctx.cache = @as(u16, bus.read(cpu.regs.pc));
-                cpu.regs.pc +%= 1;
-                switch (self) {
-                    .D => cpu.ctx.mem_ctx.step = 1,
-                    .DFF => cpu.ctx.mem_ctx.step = 2,
-                }
-                break :blk null;
-            },
-            1 => blk: {
-                cpu.ctx.mem_ctx.cache.? |= @as(u16, bus.read(cpu.regs.pc)) << 8;
-                cpu.regs.pc +%= 1;
-                cpu.ctx.mem_ctx.step = 2;
-                break :blk null;
-            },
-            2 => blk: {
-                if (self == .DFF) {
-                    cpu.ctx.mem_ctx.cache.? |= 0xFF00;
-                }
-                cpu.ctx.mem_ctx.cache = bus.read(cpu.ctx.mem_ctx.cache.?);
-                cpu.ctx.mem_ctx.step = 3;
-                break :blk null;
-            },
-            3 => blk: {
-                cpu.ctx.mem_ctx.step = null;
-                break :blk @intCast(cpu.ctx.mem_ctx.cache.? & 0xFF);
-            },
-            else => unreachable,
+        const state = struct {
+            var step: usize = 0;
+            var cache: u16 = 0;
         };
+
+        while (true) {
+            switch (state.step) {
+                0 => blk: {
+                    const lo = @as(Operand, .{ .imm8 = .{} }).read(cpu, bus);
+                    if (lo != null) {
+                        state.cache = @as(u16, lo.?);
+                        switch (self) {
+                            .D => state.step = 1,
+                            .DFF => {
+                                state.cache |= 0xFF00;
+                                state.step = 2;
+                            },
+                        }
+                        break :blk;
+                    }
+                    return null;
+                },
+                1 => blk: {
+                    const hi = @as(Operand, .{ .imm8 = .{} }).read(cpu, bus);
+                    if (hi != null) {
+                        state.cache |= @as(u16, hi.?) << 8;
+                        state.step = 2;
+                        break :blk;
+                    }
+                    return null;
+                },
+                2 => {
+                    state.cache = bus.read(state.cache);
+                    state.step = 3;
+                    return null;
+                },
+                3 => {
+                    state.step = 0;
+                    return @intCast(state.cache & 0xFF);
+                },
+                else => unreachable,
+            }
+        }
     }
 
     /// Write 8-bit value to memory pointed by the addr pointed by PC 16-bit.
     /// Consumes 3 cycles for D, 2 cycles for DFF.
     /// Increments PC by 2 for D, 1 for DFF.
     pub fn write(self: @This(), cpu: *Cpu, bus: *Peripherals, val: u8) ?void {
-        return switch (cpu.ctx.mem_ctx.step orelse 0) {
-            0 => blk: {
-                cpu.ctx.mem_ctx.cache = @as(u16, bus.read(cpu.regs.pc));
-                cpu.regs.pc +%= 1;
-                switch (self) {
-                    .D => cpu.ctx.mem_ctx.step = 1,
-                    .DFF => cpu.ctx.mem_ctx.step = 2,
-                }
-                break :blk null;
-            },
-            1 => blk: {
-                cpu.ctx.mem_ctx.cache.? |= @as(u16, bus.read(cpu.regs.pc)) << 8;
-                cpu.regs.pc +%= 1;
-                cpu.ctx.mem_ctx.step = 2;
-                break :blk null;
-            },
-            2 => blk: {
-                if (self == .DFF) {
-                    cpu.ctx.mem_ctx.cache.? |= 0xFF00;
-                }
-                bus.write(cpu.ctx.mem_ctx.cache.?, val);
-                cpu.ctx.mem_ctx.step = 3;
-                break :blk null;
-            },
-            3 => {
-                cpu.ctx.mem_ctx.step = null;
-            },
-            else => unreachable,
+        const state = struct {
+            var step: usize = 0;
+            var cache: u16 = 0;
         };
+
+        while (true) {
+            switch (state.step) {
+                0 => blk: {
+                    const lo = @as(Operand, .{ .imm8 = .{} }).read(cpu, bus);
+                    if (lo != null) {
+                        state.cache = @as(u16, lo.?);
+                        switch (self) {
+                            .D => state.step = 1,
+                            .DFF => {
+                                state.cache |= 0xFF00;
+                                state.step = 2;
+                            },
+                        }
+                        break :blk;
+                    }
+                    return null;
+                },
+                1 => blk: {
+                    const hi = @as(Operand, .{ .imm8 = .{} }).read(cpu, bus);
+                    if (hi != null) {
+                        state.cache |= @as(u16, hi.?) << 8;
+                        state.step = 2;
+                        break :blk;
+                    }
+                    return null;
+                },
+                2 => {
+                    bus.write(state.cache, val);
+                    state.step = 3;
+                    return null;
+                },
+                3 => {
+                    state.step = 0;
+                    return;
+                },
+                else => unreachable,
+            }
+        }
     }
 };
 
@@ -352,34 +410,48 @@ pub const Direct16 = struct {
     /// Consumes 4 cycles.
     /// Increments PC by 2.
     pub fn write(cpu: *Cpu, bus: *Peripherals, val: u16) ?void {
-        return switch (cpu.ctx.mem_ctx.step orelse 0) {
-            0 => blk: {
-                cpu.ctx.mem_ctx.cache = @as(u16, bus.read(cpu.regs.pc));
-                cpu.regs.pc +%= 1;
-                cpu.ctx.mem_ctx.step = 1;
-                break :blk null;
-            },
-            1 => blk: {
-                cpu.ctx.mem_ctx.cache.? |= @as(u16, bus.read(cpu.regs.pc)) << 8;
-                cpu.regs.pc +%= 1;
-                cpu.ctx.mem_ctx.step = 2;
-                break :blk null;
-            },
-            2 => blk: {
-                bus.write(cpu.ctx.mem_ctx.cache.?, @intCast(val & 0xFF));
-                cpu.ctx.mem_ctx.step = 3;
-                break :blk null;
-            },
-            3 => blk: {
-                bus.write(cpu.ctx.mem_ctx.cache.? +% 1, @intCast(val >> 8));
-                cpu.ctx.mem_ctx.step = 4;
-                break :blk null;
-            },
-            4 => {
-                cpu.ctx.mem_ctx.step = null;
-            },
-            else => unreachable,
+        const state = struct {
+            var step: usize = 0;
+            var cache: u16 = 0;
         };
+
+        while (true) {
+            switch (state.step) {
+                0 => blk: {
+                    const lo = @as(Operand, .{ .imm8 = .{} }).read(cpu, bus);
+                    if (lo != null) {
+                        state.cache = @as(u16, lo.?);
+                        state.step = 1;
+                        break :blk;
+                    }
+                    return null;
+                },
+                1 => blk: {
+                    const hi = @as(Operand, .{ .imm8 = .{} }).read(cpu, bus);
+                    if (hi != null) {
+                        state.cache |= @as(u16, hi.?) << 8;
+                        state.step = 2;
+                        break :blk;
+                    }
+                    return null;
+                },
+                2 => {
+                    bus.write(state.cache, @intCast(val & 0xFF));
+                    state.step = 3;
+                    return null;
+                },
+                3 => {
+                    bus.write(state.cache +% 1, @intCast(val >> 8));
+                    state.step = 4;
+                    return null;
+                },
+                4 => {
+                    state.step = 0;
+                    return;
+                },
+                else => unreachable,
+            }
+        }
     }
 };
 
