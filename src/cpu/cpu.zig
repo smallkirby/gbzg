@@ -39,7 +39,11 @@ pub const Cpu = struct {
 
     /// Decode the current opcode then execute it
     pub fn decode(self: *@This(), bus: *Peripherals) void {
-        return decodes.decode(self, bus);
+        if (self.ctx.cb) {
+            decodes.cb_decode(self, bus);
+        } else {
+            decodes.decode(self, bus);
+        }
     }
 
     /// Emulate a single cycle
