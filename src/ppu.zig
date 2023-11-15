@@ -1,4 +1,5 @@
 const gbzg = @import("gbzg.zig");
+const LCD_INFO = gbzg.LCD_INFO;
 
 /// Mode of Picture Processing Unit
 const Mode = enum(u2) {
@@ -46,6 +47,7 @@ pub const Ppu = struct {
     /// Line Number to trigger LYC=LY Coincidence Interrupt (address: 0xFF45)
     lyc: u8,
     /// Palette of BG and Window (address: 0xFF47)
+    /// It has 4 colors and each color is 2 bits.
     bgp: u8,
     /// Object Palette 0 (address: 0xFF48)
     obp0: u8,
@@ -60,6 +62,8 @@ pub const Ppu = struct {
     vram: []u8,
     /// OAM (Object Attribute Memory)
     oam: []u8,
+    /// LCD buffer
+    buffer: []u8,
 
     // LCDC Bits
     pub const PPU_ENABLE: u8 = 0b1000_0000;
@@ -81,9 +85,17 @@ pub const Ppu = struct {
     pub const VRAM_SIZE = 0x2000; // 8KiB
     pub const OAM_SIZEE = 0xA0; // 160B
 
+    const COLOR = struct {
+        pub const WHITE: u8 = 0xFF;
+        pub const LIGHT_GRAY: u8 = 0xAA;
+        pub const DARK_GRAY: u8 = 0x55;
+        pub const BLACK: u8 = 0x00;
+    };
+
     pub fn new() !@This() {
         const vram = try gbzg.ppu_allocator.alloc([VRAM_SIZE]u8, 1);
         const oam = try gbzg.ppu_allocator.alloc([OAM_SIZEE]u8, 1);
+        const buffer = try gbzg.ppu_allocator.alloc([LCD_INFO.pixels]u8, 1);
         return .{
             .mode = .HBlank,
             .lcdc = 0,
@@ -99,6 +111,7 @@ pub const Ppu = struct {
             .wx = 0,
             .vram = &vram[0],
             .oam = &oam[0],
+            .buffer = &buffer[0],
         };
     }
 
@@ -169,7 +182,7 @@ pub const Ppu = struct {
     /// Each tile is 16 bytes.
     const TILE_IDX_TO_ADDR_SHIFT = 4;
 
-    /// Get pixel from tile specified by tile_idx, row, and col.
+    /// Get pixel from Tile in Tile Data specified by tile_idx, row, and col.
     /// `Tile Data is an array of 0x180 `tiles`.
     /// Each `tile` consists of 16 bytes and Tile Data is plamed at 0x0000-0x17FF VRAM.
     /// Each `tile` represens 8x8 `pixel`s.
@@ -195,6 +208,19 @@ pub const Ppu = struct {
         pub const AddrTwo: usize = AddrOne + SIZE;
     };
 
+    // Tile represents 8x8 pixel.
+    // A row of tile consists of 2 bytes (16 bits) and represents 8 pixel.
+    pub const TileInfo = struct {
+        pub const WIDTH: u8 = 8;
+        pub const HEIGHT: u8 = 8;
+    };
+
+    /// Tile Data is an array of 0x180 `tiles`.
+    /// Each tile represents 8x8 pixel.
+    pub const TileDataInfo = struct {
+        pub const SIZE: usize = 0x180;
+    };
+
     /// Get tile index from Tile Map.
     /// One entry of Tile Map is 8-bit, while Tile Data has 0x180 entries.
     /// Therefore, if 4th bit of LCDC is 1, Tile Map 1 is used and Tile Map 2 is used otherwise.
@@ -210,6 +236,39 @@ pub const Ppu = struct {
         } else {
             // 0x8000-0x8FFF
             return @as(usize, @intCast(ret)) + 0x100;
+        }
+    }
+
+    /// Reender background of the current line specified by ly.
+    /// LCD is 100x144 pixel, while Tile Map has 256x256 pixel.
+    /// Therefore, this function renders 160x144 pixels of Tile Map decided by SCX and SCY.
+    /// TODO: function name should be changed to `render_bg_line` ?
+    fn render_bg(self: *@This()) void {
+        if (self.lcdc & BG_WINDOW_ENABLE == 0) {
+            return;
+        }
+
+        const y = self.ly +% self.scy;
+        for (0..LCD_INFO.width) |i| {
+            const x: u8 = @as(u8, @intCast(i & 0xFF)) +% self.scx;
+            const tile_idx = self.get_tile_idx_from_tile_map(
+                @intFromBool((self.lcdc & BG_TILE_MAP) != 0),
+                y / TileInfo.HEIGHT,
+                x / TileInfo.WIDTH,
+            );
+            const pixel = self.get_pixel_from_tile(
+                tile_idx,
+                @intCast(y % TileInfo.HEIGHT),
+                @intCast(x % TileInfo.WIDTH),
+            );
+
+            self.buffer[LCD_INFO.width * self.ly + i] = switch ((self.bgp >> ((@as(u3, pixel) * 2))) & 0b11) {
+                0 => COLOR.WHITE,
+                1 => COLOR.LIGHT_GRAY,
+                2 => COLOR.DARK_GRAY,
+                3 => COLOR.BLACK,
+                else => unreachable,
+            };
         }
     }
 };
@@ -263,8 +322,8 @@ test "get_tile_idx_from_tile_map" {
         0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F,
     } ** 2 // row1
     ;
-    const tile_map1 = ppu.vram[TileMapInfo.AddrOne..(TileMapInfo.AddrOne + TileMapInfo.SIZE - 1)];
-    const tile_map2 = ppu.vram[TileMapInfo.AddrTwo..(TileMapInfo.AddrTwo + TileMapInfo.SIZE - 1)];
+    const tile_map1 = ppu.vram[TileMapInfo.AddrOne..(TileMapInfo.AddrOne + TileMapInfo.SIZE)];
+    const tile_map2 = ppu.vram[TileMapInfo.AddrTwo..(TileMapInfo.AddrTwo + TileMapInfo.SIZE)];
     for (bytes1, 0..) |b, i| {
         tile_map1[i] = b;
     }
@@ -283,6 +342,66 @@ test "get_tile_idx_from_tile_map" {
     ppu.lcdc &= ~Ppu.BG_TILE_DATA_ADDRESSING_MODE;
     try expect(ppu.get_tile_idx_from_tile_map(0, 0, 0) == 0x100);
     try expect(ppu.get_tile_idx_from_tile_map(1, 0, 2) == 0x122);
+}
+
+test "render_bg" {
+    const TileMapInfo = Ppu.TileMapInfo;
+    const C = Ppu.COLOR;
+    var ppu = try Ppu.new();
+    ppu.lcdc |= Ppu.BG_WINDOW_ENABLE;
+    ppu.ly = 0;
+    ppu.scx = 0;
+    ppu.scy = 0;
+    ppu.lcdc &= ~Ppu.BG_TILE_MAP; // use Tile Map 0
+    ppu.lcdc |= Ppu.BG_TILE_DATA_ADDRESSING_MODE; // use Tile Data 0
+    ppu.bgp = 0b11_10_01_00; // BDLW
+
+    // initialize tile map
+    const tile_map_bytes = [_]u8{
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x1E, 0x1F,
+    } ** 32 // 32 rows
+    ;
+    try expect(tile_map_bytes.len == TileMapInfo.SIZE);
+    const tile_map = ppu.vram[TileMapInfo.AddrOne..(TileMapInfo.AddrOne + TileMapInfo.SIZE)];
+    for (tile_map_bytes, 0..) |b, i| {
+        tile_map[i] = b;
+    }
+
+    // initialize tile data
+    const tile_bytes1 = [_]u8{
+        // Note that letf side is low and right side is high
+        // Each byte's MSB is 0-th and LSB is 7-th
+        0b1111_0110, 0b1000_1110, // BLLL_DBBW
+        0b1111_0110, 0b1000_1110, // BDDD_LBBW
+        0b1111_0110, 0b1000_1110, // BDDD_LBBW
+        0b1111_0110, 0b1000_1110, // BDDD_LBBW
+        0b1111_0110, 0b1000_1110, // BDDD_LBBW
+        0b1111_0110, 0b1000_1110, // BDDD_LBBW
+        0b1111_0110, 0b1000_1110, // BDDD_LBBW
+        0b1111_0110, 0b1000_1110, // BDDD_LBBW
+    } ** Ppu.TileDataInfo.SIZE;
+    const tile_data = ppu.vram[0..0x1800];
+    for (tile_bytes1, 0..) |b, i| {
+        tile_data[i] = b;
+    }
+
+    // (0, 0) to (160, 0) is rendered.
+    // TileMap[0~20(160/8)] is used.
+    // Therefore, TileData[0~20] is used
+    // (now, Tile Index in TileData[0] is straight mapped)
+    ppu.render_bg();
+
+    for (0..LCD_INFO.width / 8) |i| {
+        try expect(ppu.buffer[0 + i * 8] == C.BLACK);
+        try expect(ppu.buffer[1 + i * 8] == C.LIGHT_GRAY);
+        try expect(ppu.buffer[2 + i * 8] == C.LIGHT_GRAY);
+        try expect(ppu.buffer[3 + i * 8] == C.LIGHT_GRAY);
+        try expect(ppu.buffer[4 + i * 8] == C.DARK_GRAY);
+        try expect(ppu.buffer[5 + i * 8] == C.BLACK);
+        try expect(ppu.buffer[6 + i * 8] == C.BLACK);
+        try expect(ppu.buffer[7 + i * 8] == C.WHITE);
+    }
 }
 
 const expect = @import("std").testing.expect;
