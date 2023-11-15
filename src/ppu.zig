@@ -7,8 +7,10 @@ const Mode = enum(u2) {
     /// Waiting for VSYNC sygnal
     VBlank = 1,
     /// Doing OAM Scan (Object Attribute Memory)
+    /// During this Mode2, CPU cannot access OAM.
     OamScan = 2,
     /// Doing Bg/Window Pixel Fetch, Sprite Pixel Fetch, and Mix Pixel and Push to LCD
+    /// During this Mode3, CPU cannot access VRAM and OAM.
     Drawing = 3,
 };
 
@@ -163,11 +165,57 @@ pub const Ppu = struct {
             else => unreachable,
         }
     }
+
+    /// Each tile is 16 bytes.
+    const TILE_IDX_TO_ADDR_SHIFT = 4;
+
+    /// Get pixel from tile specified by tile_idx, row, and col.
+    /// `Tile Data is an array of 0x180 `tiles`.
+    /// Each `tile` consists of 16 bytes and Tile Data is plamed at 0x0000-0x17FF VRAM.
+    /// Each `tile` represens 8x8 `pixel`s.
+    /// `Tile` has 8 rows and each row has 2 bytes (16 bits).
+    /// `Pixel` is 2 bits and pair of 2 bits in higher/lowrer part of `tile` represents it.
+    fn get_pixel_from_tile(self: @This(), tile_idx: usize, row: u3, col: u3) u2 {
+        const r = row * 2;
+        const c = 7 - col;
+        const tile_addr = tile_idx << TILE_IDX_TO_ADDR_SHIFT;
+        const low = self.vram[(tile_addr | r) & 0x1FFF];
+        const high = self.vram[(tile_addr | r + 1) & 0x1FFF];
+        return (@as(u2, @intCast((high >> c) & 1))) << 1 |
+            @as(u2, @intCast((low >> c) & 1));
+    }
 };
 
 test "init PPU" {
     const ppu = try Ppu.new();
     try expect(ppu.mode == .HBlank);
+}
+
+test "get_pixel_from_tile" {
+    const ppu = try Ppu.new();
+    // MSB of each byte is `high`er
+    ppu.vram[0] = 0b1111_0110; // i0,r0,low
+    ppu.vram[1] = 0b1000_1111; // i0,r0,high
+    ppu.vram[18] = 0b1111_0110; // i1,r1,low
+    ppu.vram[19] = 0b1000_1111; // i1,r1,high
+
+    try expect(ppu.get_pixel_from_tile(0, 0, 0) == 0b11);
+    try expect(ppu.get_pixel_from_tile(0, 0, 1) == 0b01);
+    try expect(ppu.get_pixel_from_tile(0, 0, 2) == 0b01);
+    try expect(ppu.get_pixel_from_tile(0, 0, 3) == 0b01);
+    try expect(ppu.get_pixel_from_tile(0, 0, 4) == 0b10);
+    try expect(ppu.get_pixel_from_tile(0, 0, 5) == 0b11);
+    try expect(ppu.get_pixel_from_tile(0, 0, 6) == 0b11);
+    try expect(ppu.get_pixel_from_tile(0, 0, 7) == 0b10);
+
+    try expect(ppu.get_pixel_from_tile(1, 1, 0) == 0b11);
+    try expect(ppu.get_pixel_from_tile(1, 1, 1) == 0b01);
+    try expect(ppu.get_pixel_from_tile(1, 1, 2) == 0b01);
+    try expect(ppu.get_pixel_from_tile(1, 1, 3) == 0b01);
+    try expect(ppu.get_pixel_from_tile(1, 1, 4) == 0b10);
+    try expect(ppu.get_pixel_from_tile(1, 1, 5) == 0b11);
+    try expect(ppu.get_pixel_from_tile(1, 1, 6) == 0b11);
+    try expect(ppu.get_pixel_from_tile(1, 1, 7) == 0b10);
 }
 
 const expect = @import("std").testing.expect;
