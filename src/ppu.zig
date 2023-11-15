@@ -198,7 +198,7 @@ pub const Ppu = struct {
     /// Get tile index from Tile Map.
     /// One entry of Tile Map is 8-bit, while Tile Data has 0x180 entries.
     /// Therefore, if 4th bit of LCDC is 1, Tile Map 1 is used and Tile Map 2 is used otherwise.
-    pub fn get_tile_idx_from_tile_map(self: @This(), time_map: u1, row: u8, col: u8) usize {
+    fn get_tile_idx_from_tile_map(self: @This(), time_map: u1, row: u8, col: u8) usize {
         const start_addr = if (time_map == 0)
             TileMapInfo.AddrOne
         else
