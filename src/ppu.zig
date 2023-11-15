@@ -184,6 +184,34 @@ pub const Ppu = struct {
         return (@as(u2, @intCast((high >> c) & 1))) << 1 |
             @as(u2, @intCast((low >> c) & 1));
     }
+
+    /// Tile Map consists of 32x32 array of 8bit tile index.
+    /// One tile represents 8x8 pixel, hence Tile Map represents 256x256 pixel.
+    pub const TileMapInfo = struct {
+        pub const ROWS: usize = 32;
+        pub const COLS: usize = 32;
+        pub const SIZE: usize = ROWS * COLS;
+        pub const AddrOne: usize = 0x1800;
+        pub const AddrTwo: usize = AddrOne + SIZE;
+    };
+
+    /// Get tile index from Tile Map.
+    /// One entry of Tile Map is 8-bit, while Tile Data has 0x180 entries.
+    /// Therefore, if 4th bit of LCDC is 1, Tile Map 1 is used and Tile Map 2 is used otherwise.
+    pub fn get_tile_idx_from_tile_map(self: @This(), time_map: u1, row: u8, col: u8) usize {
+        const start_addr = if (time_map == 0)
+            TileMapInfo.AddrOne
+        else
+            TileMapInfo.AddrTwo;
+        const ret = self.vram[start_addr + (row * TileMapInfo.COLS) + col];
+
+        if (self.lcdc & BG_TILE_DATA_ADDRESSING_MODE != 0) {
+            return ret;
+        } else {
+            // 0x8000-0x8FFF
+            return @as(usize, @intCast(ret)) + 0x100;
+        }
+    }
 };
 
 test "init PPU" {
@@ -216,6 +244,45 @@ test "get_pixel_from_tile" {
     try expect(ppu.get_pixel_from_tile(1, 1, 5) == 0b11);
     try expect(ppu.get_pixel_from_tile(1, 1, 6) == 0b11);
     try expect(ppu.get_pixel_from_tile(1, 1, 7) == 0b10);
+}
+
+test "get_tile_idx_from_tile_map" {
+    const TileMapInfo = Ppu.TileMapInfo;
+    var ppu = try Ppu.new();
+    const bytes1 = [_]u8{
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+    } ** 2 // row0
+    ++ [_]u8{
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
+    } ** 2 // row1
+    ;
+    const bytes2 = [_]u8{
+        0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F,
+    } ** 2 // row0
+    ++ [_]u8{
+        0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F,
+    } ** 2 // row1
+    ;
+    const tile_map1 = ppu.vram[TileMapInfo.AddrOne..(TileMapInfo.AddrOne + TileMapInfo.SIZE - 1)];
+    const tile_map2 = ppu.vram[TileMapInfo.AddrTwo..(TileMapInfo.AddrTwo + TileMapInfo.SIZE - 1)];
+    for (bytes1, 0..) |b, i| {
+        tile_map1[i] = b;
+    }
+    for (bytes2, 0..) |b, i| {
+        tile_map2[i] = b;
+    }
+
+    // LCDC.4 == 1
+    ppu.lcdc |= Ppu.BG_TILE_DATA_ADDRESSING_MODE;
+    try expect(ppu.get_tile_idx_from_tile_map(0, 0, 0) == 0x00);
+    try expect(ppu.get_tile_idx_from_tile_map(0, 0, 2) == 0x02);
+    try expect(ppu.get_tile_idx_from_tile_map(0, 1, 6) == 0x16);
+    try expect(ppu.get_tile_idx_from_tile_map(1, 1, 2) == 0x32);
+
+    // LCDC.4 == 0
+    ppu.lcdc &= ~Ppu.BG_TILE_DATA_ADDRESSING_MODE;
+    try expect(ppu.get_tile_idx_from_tile_map(0, 0, 0) == 0x100);
+    try expect(ppu.get_tile_idx_from_tile_map(1, 0, 2) == 0x122);
 }
 
 const expect = @import("std").testing.expect;
