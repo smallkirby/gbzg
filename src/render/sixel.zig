@@ -61,7 +61,11 @@ pub const Sixel = struct {
         sixel.sixel_dither_set_pixelformat(self.sixel_dither, sixel.SIXEL_PIXELFORMAT_G8);
     }
 
-    pub fn encode(self: *@This()) SixelErrors!void {
+    pub fn draw(self: *@This(), pixels: [LCD_INFO.pixels]u8) SixelErrors!void {
+        for (0..LCD_INFO.pixels) |i| {
+            self.buffer[i] = pixels[i];
+        }
+
         const status = sixel.sixel_encode(
             @ptrCast(&self.buffer),
             LCD_INFO.width,

@@ -5,6 +5,8 @@ comptime {
     _ = @import("gbzg.zig");
     _ = @import("peripherals.zig");
     _ = @import("ppu.zig");
+    _ = @import("lcd.zig");
+
     _ = @import("cpu/test.zig");
     _ = @import("render/sixel.zig");
 

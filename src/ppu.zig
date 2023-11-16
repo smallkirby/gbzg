@@ -271,6 +271,10 @@ pub const Ppu = struct {
             };
         }
     }
+
+    pub fn emulate_cycle(_: *@This()) bool {
+        unreachable; // XXX
+    }
 };
 
 test "init PPU" {
