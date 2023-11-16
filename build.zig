@@ -1,5 +1,10 @@
 const std = @import("std");
 
+fn exists(path: []const u8) bool {
+    _ = std.fs.openFileAbsolute(path, .{ .mode = .read_only }) catch return false;
+    return true;
+}
+
 // Although this function looks imperative, note that its job is to
 // declaratively construct a build graph that will be executed by an external
 // runner.
@@ -15,6 +20,8 @@ pub fn build(b: *std.Build) void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
+    // Check if libsixel is available
+
     const exe = b.addExecutable(.{
         .name = "gbzg",
         // In this case the main source file is merely a path, however, in more
@@ -22,8 +29,9 @@ pub fn build(b: *std.Build) void {
         .root_source_file = .{ .path = "src/main.zig" },
         .target = target,
         .optimize = optimize,
-        .link_libc = false,
+        .link_libc = true,
     });
+    exe.linkSystemLibrary("sixel");
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
@@ -59,7 +67,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = .{ .path = "src/test.zig" },
         .target = target,
         .optimize = optimize,
-        .link_libc = false,
+        .link_libc = true,
     });
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
