@@ -12,7 +12,7 @@ pub const Mbc = union(enum) {
         low_bank: usize,
         /// Mapped to 0x4000-0x5FFF. Lower 2bits are used.
         high_bank: usize,
-        /// Mapped to 0x6000-0x7FFF. LSB is used.
+        /// Whether if addr is switched by bank. Mapped to 0x6000-0x7FFF. LSB is used.
         bank_mode: bool,
         /// Number of ROM banks.
         num_rom_banks: usize,
@@ -54,6 +54,32 @@ pub const Mbc = union(enum) {
                 else => unreachable,
             },
         }
+    }
+
+    /// Get the address of cardridge switced by MBC.
+    pub fn get_addr(self: @This(), addr: u16) usize {
+        return switch (self) {
+            .nombc => addr,
+            .mbc1 => |mbc1| switch (addr) {
+                // ROM. Only lower 14bits are used.
+                0x0000...0x3FFF => if (mbc1.bank_mode) b: {
+                    break :b (mbc1.high_bank << 19) | (addr & 0x3FFF);
+                } else b: {
+                    break :b addr & 0x3FFF;
+                },
+                // ROM. Only lower 14bits are used. If addr exceeds ROM size, it wraps around.
+                0x4000...0x7FFF => (mbc1.high_bank << 19) |
+                    ((mbc1.low_bank & (mbc1.num_rom_banks - 1)) << 14) |
+                    (addr & 0x3FFF),
+                // SRAM. Only lower 13bits are used.
+                0xA000...0xBFFF => if (mbc1.bank_mode) b: {
+                    break :b (mbc1.high_bank << 13) | (addr & 0x1FFF);
+                } else b: {
+                    break :b addr & 0x1FFF;
+                },
+                else => unreachable,
+            },
+        };
     }
 };
 
@@ -105,6 +131,33 @@ test "MBC1 write" {
     try expect(mbc.mbc1.bank_mode == false);
     mbc.write(0x6100, 0b1111_1110);
     try expect(mbc.mbc1.bank_mode == false);
+}
+
+test "MBC1 get_addr" {
+    var mbc = Mbc.new(.MBC1, 2);
+    mbc.mbc1.high_bank = 0b10;
+    mbc.mbc1.low_bank = 0b10110;
+    mbc.mbc1.num_rom_banks = 2;
+    try expect(mbc.mbc1.bank_mode == false);
+
+    // ROM1 (straight map)
+    try expect(mbc.get_addr(0x1000) == 0x1000);
+    // ROM2
+    try expect(mbc.get_addr(0x4100) == 0x0100 | (0b10 << 19) | (0b00000 << 14));
+    try expect(mbc.get_addr(0x7400) == 0x3400 | (0b10 << 19) | (0b00000 << 14));
+    // SRAM (straight map)
+    try expect(mbc.get_addr(0xA000) == 0x0000);
+
+    mbc.mbc1.bank_mode = true;
+
+    // ROM1
+    try expect(mbc.get_addr(0x1230) == 0x1230 | (0b10 << 19));
+    // ROM2
+    try expect(mbc.get_addr(0x4100) == 0x0100 | (0b10 << 19) | (0b00000 << 14));
+    try expect(mbc.get_addr(0x7400) == 0x3400 | (0b10 << 19) | (0b00000 << 14));
+    // SRAM
+    try expect(mbc.get_addr(0xA000) == 0x0000 | (0b10 << 13));
+    try expect(mbc.get_addr(0xB000) == 0x1000 | (0b10 << 13));
 }
 
 const expect = @import("std").testing.expect;
