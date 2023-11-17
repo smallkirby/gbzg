@@ -2,6 +2,7 @@ const Bootrom = @import("bootrom.zig").Bootrom;
 const HRam = @import("hram.zig").HRam;
 const WRam = @import("wram.zig").WRam;
 const Ppu = @import("ppu.zig").Ppu;
+const Cartridge = @import("cartridge.zig").Cartridge;
 
 /// Periperal devices and MMIO handler
 pub const Peripherals = struct {
@@ -9,13 +10,15 @@ pub const Peripherals = struct {
     hram: HRam,
     wram: WRam,
     ppu: Ppu,
+    cartridge: Cartridge,
 
-    pub fn new(bootrom: Bootrom) !Peripherals {
+    pub fn new(bootrom: Bootrom, cartridge: Cartridge) !Peripherals {
         return Peripherals{
             .bootrom = bootrom,
             .hram = try HRam.new(),
             .wram = try WRam.new(),
             .ppu = try Ppu.new(),
+            .cartridge = cartridge,
         };
     }
 
@@ -24,9 +27,11 @@ pub const Peripherals = struct {
             0x0000...0x00FF => if (self.bootrom.active) {
                 return self.bootrom.read(addr);
             } else {
-                unreachable;
+                return self.cartridge.read(addr);
             },
+            0x0100...0x7FFF => self.cartridge.read(addr),
             0x8000...0x9FFF => self.ppu.read(addr),
+            0xA000...0xBFFF => self.cartridge.read(addr),
             0xC000...0xDFFF => self.wram.read(addr),
             0xFE00...0xFE9F => self.ppu.read(addr),
             0xFF40...0xFF4B => self.ppu.read(addr),
@@ -42,7 +47,12 @@ pub const Peripherals = struct {
     pub fn write(self: *Peripherals, addr: u16, val: u8) void {
         // @import("std").debug.print("write: [0x{X:0>4}] <- 0x{X:0>4}\n", .{ addr, val });
         return switch (addr) {
+            0x0000...0x00FF => if (!self.bootrom.active) {
+                self.cartridge.write(addr, val);
+            },
+            0x0100...0x7FFF => self.cartridge.write(addr, val),
             0x8000...0x9FFF => self.ppu.write(addr, val),
+            0xA000...0xBFFF => self.cartridge.write(addr, val),
             0xC000...0xDFFF => self.wram.write(addr, val),
             0xFE00...0xFE9F => self.ppu.write(addr, val),
             0xFF40...0xFF4B => self.ppu.write(addr, val),
