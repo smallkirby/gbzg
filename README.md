@@ -16,7 +16,7 @@ Forked from [gb-emu](https://github.com/take44444/gb-emu).
 zig build run
 ```
 
-## Rendrer
+## Renderer
 
 For now, [Sixel](https://github.com/saitoha/libsixel) is supported as a LCD renderer.
 You can install dependencies by following command.
