@@ -62,6 +62,8 @@ pub const Sixel = struct {
     }
 
     pub fn draw(self: *@This(), pixels: []u8) SixelErrors!void {
+        self.scroll_to_top();
+
         for (0..LCD_INFO.pixels) |i| {
             self.buffer[i] = pixels[i];
         }
@@ -125,15 +127,32 @@ pub const Sixel = struct {
         }
 
         _ = c.printf("\x1B[?25l\x1B"); // hide cursor
+        _ = c.printf("\x1B[1B"); // move cursor down by 1
+        self.save_cursor_position();
     }
 
     fn restore_terminal(self: @This()) SixelErrors!void {
+        _ = c.tcsetattr(c.STDIN_FILENO, c.TCSAFLUSH, @ptrCast(&self.old_termios.?));
         _ = c.printf("\x1B[?25h"); // show cursor
-        _ = c.tcsetattr(c.STDIN_FILENO, c.TCSAFLUSH, @ptrCast(&self.old_termios));
+        _ = c.fflush(c.stdout);
+    }
+
+    fn save_cursor_position(_: @This()) void {
+        _ = c.printf("\x1B[s");
+        _ = c.fflush(c.stdout);
+    }
+
+    fn restore_cursor_position(_: @This()) void {
+        _ = c.printf("\x1B[u");
+        _ = c.fflush(c.stdout);
+    }
+
+    fn scroll_to_top(_: @This()) void {
+        _ = c.printf("\x1B[2J\x1B[H");
+        _ = c.fflush(c.stdout);
     }
 
     pub fn deinit(self: @This()) SixelErrors!void {
-        _ = c.printf("\x1B[?25h"); // show cursor
-        _ = c.tcsetattr(c.STDIN_FILENO, c.TCSAFLUSH, @ptrCast(&self.old_termios));
+        try self.restore_terminal();
     }
 };
