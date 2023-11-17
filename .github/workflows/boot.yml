@@ -40,4 +40,4 @@ jobs:
 
       - name: Boot
         run: |
-          cargo build run -- --boot-only
+          zig build run -- --boot-only
