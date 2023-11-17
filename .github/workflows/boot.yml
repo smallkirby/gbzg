@@ -1,0 +1,43 @@
+name: boot
+
+env:
+  ZIG_VERSION: 0.11.0
+
+on:
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
+
+jobs:
+  test:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install libsixel
+        run: |
+          apt update
+          apt install -y libsixel-dev
+
+      - name: Install zig
+        run: |
+          curl https://ziglang.org/builds/zig-linux-x86_64-${{env.ZIG_VERSION}}.tar.xz -L -o zig.tar.xz
+          tar -xf zig.tar.xz
+          echo "$(pwd)/zig-linux-x86_64-${{env.ZIG_VERSION}}" >> $GITHUB_PATH
+
+      - name: Get Free BootROM
+        run: |
+          curl \
+            https://github.com/take44444/Gameboy-free_bootrom/releases/download/1.0.0/dmg_bootrom.bin \
+            -L \
+            -o dmg_bootrom.bin
+
+      - name: Boot
+        run: |
+          cargo build run -- --boot-only
