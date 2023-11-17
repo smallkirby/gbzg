@@ -20,7 +20,7 @@ pub const LCD = struct {
         }
     }
 
-    pub fn draw(self: *@This(), pixels: [LCD_INFO.pixels]u8) !void {
+    pub fn draw(self: *@This(), pixels: []u8) !void {
         switch (self.renderer) {
             .sixel => {
                 try self.renderer.sixel.draw(pixels);

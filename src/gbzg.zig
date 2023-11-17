@@ -43,16 +43,19 @@ pub const GameBoy = struct {
         try self.lcd.deinit();
     }
 
-    pub fn run(self: @This()) !void {
-        const timer = try std.time.Timer.start();
-        var elapsed = 0;
+    pub fn run(self: *@This()) !void {
+        dprint("Start Running...\n", .{});
+
+        var timer = try std.time.Timer.start();
+        var elapsed: u128 = 0;
 
         while (true) {
-            const e = timer.lap();
-            for (0..e / M_CYCLE_NANOS) |_| {
-                self.cpu.emulate_cycle(self.peripherals);
+            const e = timer.read();
+
+            for (0..@as(usize, @intCast((e - elapsed) / M_CYCLE_NANOS))) |_| {
+                self.cpu.emulate_cycle(&self.peripherals);
                 if (self.peripherals.ppu.emulate_cycle()) {
-                    self.lcd.draw(self.peripherals.ppu.buffer);
+                    try self.lcd.draw(self.peripherals.ppu.buffer);
                 }
 
                 elapsed += M_CYCLE_NANOS;
@@ -60,3 +63,5 @@ pub const GameBoy = struct {
         }
     }
 };
+
+const dprint = @import("std").debug.print;

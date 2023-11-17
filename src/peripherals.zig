@@ -31,11 +31,16 @@ pub const Peripherals = struct {
             0xFE00...0xFE9F => self.ppu.read(addr),
             0xFF40...0xFF4B => self.ppu.read(addr),
             0xFF80...0xFFFE => self.hram.read(addr),
-            else => unreachable,
+            else => blk: {
+                // @import("std").debug.print("Invalid peripheral read: [0x{X:0>4}]\n", .{addr});
+                // unreachable;
+                break :blk 0xFF;
+            },
         };
     }
 
     pub fn write(self: *Peripherals, addr: u16, val: u8) void {
+        // @import("std").debug.print("write: [0x{X:0>4}] <- 0x{X:0>4}\n", .{ addr, val });
         return switch (addr) {
             0x8000...0x9FFF => self.ppu.write(addr, val),
             0xC000...0xDFFF => self.wram.write(addr, val),
@@ -44,8 +49,9 @@ pub const Peripherals = struct {
             0xFF50 => self.bootrom.write(addr, val),
             0xFF80...0xFFFE => self.hram.write(addr, val),
             else => {
-                @import("std").io.getStdErr().writer().print("Unimplemented peripheral write: 0x{X:0>4} = 0x{X:0>4}\n", .{ addr, val }) catch {};
-                unreachable;
+                // TODO: should be unreachable
+                // @import("std").io.getStdErr().writer().print("Unimplemented peripheral write: [0x{X:0>4}] <- 0x{X:0>4}\n", .{ addr, val }) catch {};
+                // unreachable;
             },
         };
     }

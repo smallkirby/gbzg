@@ -58,6 +58,9 @@ pub const Ppu = struct {
     /// Window X Position (address: 0xFF4B)
     wx: u8,
 
+    /// TODO
+    cycles: u8,
+
     /// VRAM
     vram: []u8,
     /// OAM (Object Attribute Memory)
@@ -97,7 +100,7 @@ pub const Ppu = struct {
         const oam = try gbzg.ppu_allocator.alloc([OAM_SIZEE]u8, 1);
         const buffer = try gbzg.ppu_allocator.alloc([LCD_INFO.pixels]u8, 1);
         return .{
-            .mode = .HBlank,
+            .mode = .OamScan,
             .lcdc = 0,
             .stat = 0,
             .scy = 0,
@@ -109,6 +112,7 @@ pub const Ppu = struct {
             .obp1 = 0,
             .wy = 0,
             .wx = 0,
+            .cycles = 20,
             .vram = &vram[0],
             .oam = &oam[0],
             .buffer = &buffer[0],
@@ -134,7 +138,7 @@ pub const Ppu = struct {
                 }
             },
             0xFF40 => self.lcdc,
-            0xFF41 => self.stat,
+            0xFF41 => 0b1000_0000 | self.stat | @intFromEnum(self.mode),
             0xFF42 => self.scy,
             0xFF43 => self.scx,
             0xFF44 => self.ly,
@@ -189,11 +193,11 @@ pub const Ppu = struct {
     /// `Tile` has 8 rows and each row has 2 bytes (16 bits).
     /// `Pixel` is 2 bits and pair of 2 bits in higher/lowrer part of `tile` represents it.
     fn get_pixel_from_tile(self: @This(), tile_idx: usize, row: u3, col: u3) u2 {
-        const r = row * 2;
+        const r = @as(u8, row) * 2;
         const c = 7 - col;
         const tile_addr = tile_idx << TILE_IDX_TO_ADDR_SHIFT;
         const low = self.vram[(tile_addr | r) & 0x1FFF];
-        const high = self.vram[(tile_addr | r + 1) & 0x1FFF];
+        const high = self.vram[(tile_addr | (r + 1)) & 0x1FFF];
         return (@as(u2, @intCast((high >> c) & 1))) << 1 |
             @as(u2, @intCast((low >> c) & 1));
     }
@@ -229,13 +233,13 @@ pub const Ppu = struct {
             TileMapInfo.AddrOne
         else
             TileMapInfo.AddrTwo;
-        const ret = self.vram[start_addr + (row * TileMapInfo.COLS) + col];
+        const ret = self.vram[(start_addr + (@as(usize, @intCast(row)) * TileMapInfo.COLS) + col) & 0x3FFF];
 
         if (self.lcdc & BG_TILE_DATA_ADDRESSING_MODE != 0) {
             return ret;
         } else {
-            // 0x8000-0x8FFF
-            return @as(usize, @intCast(ret)) + 0x100;
+            const reti16 = @as(i16, @intCast(@as(i8, @bitCast(ret)))) + 0x100;
+            return @as(u16, @bitCast(reti16));
         }
     }
 
@@ -262,7 +266,7 @@ pub const Ppu = struct {
                 @intCast(x % TileInfo.WIDTH),
             );
 
-            self.buffer[LCD_INFO.width * self.ly + i] = switch ((self.bgp >> ((@as(u3, pixel) * 2))) & 0b11) {
+            self.buffer[@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i] = switch ((self.bgp >> ((@as(u3, pixel) * 2))) & 0b11) {
                 0 => COLOR.WHITE,
                 1 => COLOR.LIGHT_GRAY,
                 2 => COLOR.DARK_GRAY,
@@ -272,14 +276,75 @@ pub const Ppu = struct {
         }
     }
 
-    pub fn emulate_cycle(_: *@This()) bool {
-        unreachable; // XXX
+    /// TODO
+    fn check_lyc_eq_ly(self: *@This()) void {
+        if (self.ly == self.lyc) {
+            self.stat |= LYC_EQ_LY;
+        } else {
+            self.stat &= ~LYC_EQ_LY;
+        }
+    }
+
+    /// Emulate single M-cycle.
+    /// Return true if VBlank is emitted.
+    pub fn emulate_cycle(self: *@This()) bool {
+        if (self.lcdc & PPU_ENABLE == 0) {
+            return false;
+        }
+
+        self.cycles -|= 1;
+        if (self.cycles > 0) {
+            return false; // do nothing until the last cycle
+        }
+
+        return switch (self.mode) {
+            .HBlank => blk: {
+                self.ly += 1;
+                if (self.ly < LCD_INFO.height) {
+                    self.mode = .OamScan;
+                    self.cycles = 20;
+                } else {
+                    self.mode = .VBlank;
+                    self.cycles = 114;
+                }
+                // we need to check LYC=LY coincidence every time we change LY
+                self.check_lyc_eq_ly();
+                break :blk false;
+            },
+            .VBlank => blk: {
+                var vblank = false;
+                self.ly += 1;
+                // Mode1 lasts 10 lines (10 * 114 = 1140 M-cycles)
+                if (self.ly == (LCD_INFO.height + 10)) {
+                    vblank = true;
+                    self.ly = 0;
+                    self.mode = .OamScan;
+                    self.cycles = 20;
+                } else {
+                    self.cycles = 114;
+                }
+                // we need to check LYC=LY coincidence every time we change LY
+                self.check_lyc_eq_ly();
+                break :blk vblank;
+            },
+            .OamScan => blk: {
+                self.mode = .Drawing;
+                self.cycles = 43;
+                break :blk false;
+            },
+            .Drawing => blk: {
+                self.render_bg();
+                self.mode = .HBlank;
+                self.cycles = 51;
+                break :blk false;
+            },
+        };
     }
 };
 
 test "init PPU" {
     const ppu = try Ppu.new();
-    try expect(ppu.mode == .HBlank);
+    try expect(ppu.mode == .OamScan);
 }
 
 test "get_pixel_from_tile" {

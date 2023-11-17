@@ -48,7 +48,18 @@ pub const Cpu = struct {
 
     /// Emulate a single cycle
     pub fn emulate_cycle(self: *@This(), bus: *Peripherals) void {
+        //self.debug_print_regs();
         self.decode(bus);
+    }
+
+    fn debug_print_regs(self: @This()) void {
+        const print = @import("std").debug.print;
+        print("PC={X:0>4} OP={X:0>2} ", .{ self.regs.pc, self.ctx.opcode });
+        print("A={X:0>2} F={X:0>2} ", .{ self.regs.a, self.regs.f });
+        print("B={X:0>2} C={X:0>2} ", .{ self.regs.b, self.regs.c });
+        print("D={X:0>2} E={X:0>2} ", .{ self.regs.d, self.regs.e });
+        print("H={X:0>2} L={X:0>2} ", .{ self.regs.h, self.regs.l });
+        print("SP={X:0>4}\n", .{self.regs.sp});
     }
 };
 

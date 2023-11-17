@@ -61,7 +61,7 @@ pub const Sixel = struct {
         sixel.sixel_dither_set_pixelformat(self.sixel_dither, sixel.SIXEL_PIXELFORMAT_G8);
     }
 
-    pub fn draw(self: *@This(), pixels: [LCD_INFO.pixels]u8) SixelErrors!void {
+    pub fn draw(self: *@This(), pixels: []u8) SixelErrors!void {
         for (0..LCD_INFO.pixels) |i| {
             self.buffer[i] = pixels[i];
         }
@@ -78,6 +78,8 @@ pub const Sixel = struct {
         if (sixel.SIXEL_FAILED(status)) {
             return SixelErrors.EncodeError;
         }
+
+        _ = c.fflush(c.stdout);
     }
 
     fn sixel_write(data: [*c]u8, size: c_int, priv: ?*anyopaque) callconv(.C) c_int {

@@ -49,7 +49,7 @@ pub fn ld(cpu: *Cpu, bus: *Peripherals, dst: Operand, src: Operand) void {
 /// It subtracts src from A-register, then sets flags according to the result.
 pub fn cp(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
     if (src.read(cpu, bus)) |v| {
-        const u: u8 = @intCast(v & 0xFF);
+        const u: u8 = @truncate(v);
         const res = @subWithOverflow(cpu.regs.a, u);
         cpu.regs.set_zf(res[0] == 0);
         cpu.regs.set_nf(true); // unconditional
@@ -120,7 +120,7 @@ pub fn dec(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
             0 => blk: {
                 if (src.read(cpu, bus)) |v| {
                     if (src.is8()) {
-                        const u: u8 = @intCast(v & 0xFF);
+                        const u: u8 = @truncate(v);
                         const res = u -% 1;
                         cpu.regs.set_zf(res == 0);
                         cpu.regs.set_nf(true); // unconditional
@@ -169,7 +169,7 @@ pub fn rl(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
         switch (state.step) {
             0 => blk: {
                 if (src.read(cpu, bus)) |s| {
-                    const u: u8 = @intCast(s & 0xFF);
+                    const u: u8 = @truncate(s);
                     const v = (u << 1) | @intFromBool(cpu.regs.cf());
                     cpu.regs.set_zf(v == 0);
                     cpu.regs.set_nf(false); // unconditional
@@ -196,7 +196,7 @@ pub fn rl(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
 /// Check if num-th bit of src is NOT set.
 pub fn bit(cpu: *Cpu, bus: *Peripherals, nth: u3, src: Operand) void {
     if (src.read(cpu, bus)) |s| {
-        const u: u8 = @intCast(s & 0xFF);
+        const u: u8 = @truncate(s);
         cpu.regs.set_zf((u & (@as(u8, 1) << nth)) == 0);
         cpu.regs.set_nf(false); // unconditional
         cpu.regs.set_hf(true); // unconditional
@@ -220,8 +220,8 @@ pub fn push16(cpu: *Cpu, bus: *Peripherals, val: u16) ?void {
             return null;
         },
         1 => {
-            const lo: u8 = @intCast(val & 0xFF);
-            const hi: u8 = @intCast(val >> 8);
+            const lo: u8 = @truncate(val);
+            const hi: u8 = @truncate(val >> 8);
             cpu.regs.sp -%= 1;
             bus.write(cpu.regs.sp, hi);
 
@@ -322,8 +322,8 @@ pub fn jr(cpu: *Cpu, bus: *Peripherals) void {
     switch (state.step) {
         0 => {
             if (@as(Operand, .{ .imm8 = .{} }).read(cpu, bus)) |v| {
-                const int8: i8 = @intCast(v & 0xFF);
-                cpu.regs.pc +%= @as(u16, @intCast(int8));
+                const s16 = @as(i16, @as(i8, @bitCast(@as(u8, @truncate(v)))));
+                cpu.regs.pc +%= @as(u16, @bitCast(s16));
                 state.step = 1;
             }
             return;
@@ -359,8 +359,8 @@ pub fn jrc(cpu: *Cpu, bus: *Peripherals, c: Cond) void {
                 if (@as(Operand, .{ .imm8 = .{} }).read(cpu, bus)) |v| {
                     state.step = 1;
                     if (cond(cpu, c)) {
-                        const int8: i8 = @intCast(v & 0xFF);
-                        cpu.regs.pc +%= @as(u16, @intCast(int8));
+                        const s16 = @as(i16, @as(i8, @bitCast(@as(u8, @truncate(v)))));
+                        cpu.regs.pc +%= @as(u16, @bitCast(s16));
                         return;
                     }
                     break :blk;
