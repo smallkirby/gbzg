@@ -3,6 +3,7 @@ const HRam = @import("hram.zig").HRam;
 const WRam = @import("wram.zig").WRam;
 const Ppu = @import("ppu.zig").Ppu;
 const Cartridge = @import("cartridge.zig").Cartridge;
+const CartridgeHeader = @import("cartridge.zig").CartridgeHeader;
 
 /// Periperal devices and MMIO handler
 pub const Peripherals = struct {
@@ -72,7 +73,8 @@ const expect = @import("std").testing.expect;
 test "Initialize peripherals" {
     var rom = [_]u8{ 0x00, 0x00, 0x00, 0x00 };
     var bootrom = Bootrom.new(&rom);
-    var peripherals = try Peripherals.new(bootrom);
+    const cart = try test_init_debug_cartridge();
+    var peripherals = try Peripherals.new(bootrom, cart);
 
     _ = peripherals;
 }
@@ -80,7 +82,8 @@ test "Initialize peripherals" {
 test "Basic peripheral IO" {
     var rom = [_]u8{ 0x00, 0x00, 0x00, 0x00 };
     var bootrom = Bootrom.new(&rom);
-    var peripherals = try Peripherals.new(bootrom);
+    const cart = try test_init_debug_cartridge();
+    var peripherals = try Peripherals.new(bootrom, cart);
 
     try expect(peripherals.read(0x0000) == 0x00);
     try expect(peripherals.read(0xC000) == 0x00);
@@ -92,4 +95,37 @@ test "Basic peripheral IO" {
     try expect(peripherals.read(0xC000) == 0x01);
     try expect(peripherals.read(0xFF80) == 0x02);
     try expect(peripherals.bootrom.active == false);
+}
+
+fn test_init_debug_cartridge() !Cartridge {
+    const rom_size: usize = 1 << 18;
+    var header = CartridgeHeader{
+        .entry_point = 0x04030201,
+        .logo = [_]u8{0xFF} ** 48,
+        .title = "TestCartRid".*,
+        .maker = "ABCD".*,
+        .cgb_flag = 0x01,
+        .new_license = 0x5678,
+        .sgb_flag = 0x00,
+        .cartridge_type = .MBC1_SRAM_BATT,
+        .raw_rom_size = 0x03,
+        .raw_sram_size = ._32KB,
+        .destination = 0x00,
+        .old_license = 0x33,
+        .game_version = 0x00,
+        .header_checksum = 0,
+        .global_checksum = 0xBBAA,
+    };
+    var checksum: u8 = 0;
+    for (0x34..0x4D) |i| {
+        checksum +%= @as([@sizeOf(CartridgeHeader)]u8, @bitCast(header))[i];
+    }
+    header.header_checksum = checksum;
+
+    var rom = [_]u8{0x00} ** rom_size;
+    for (0..@sizeOf(CartridgeHeader)) |i| {
+        rom[i] = @as([@sizeOf(CartridgeHeader)]u8, @bitCast(header))[i];
+    }
+
+    return try Cartridge.new(&rom);
 }
