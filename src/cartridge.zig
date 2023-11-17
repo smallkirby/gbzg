@@ -43,7 +43,22 @@ pub const CartridgeHeader = extern struct {
 
     /// Instantiate from a raw image.
     pub fn from_bytes(bytes: [@sizeOf(@This())]u8) @This() {
-        return @as(CartridgeHeader, @bitCast(bytes));
+        const ret = @as(CartridgeHeader, @bitCast(bytes));
+        ret.check_header_checksum();
+        return ret;
+    }
+
+    fn check_header_checksum(self: @This()) void {
+        var sum: u8 = 0;
+        const bytes: [@sizeOf(@This())]u8 = @bitCast(self);
+        for (0x34..0x4D) |i| {
+            sum +%= bytes[i];
+        }
+
+        if (sum != self.header_checksum) {
+            std.log.err("Header checksum mismatch: expected {}, got {}\n", .{ self.header_checksum, sum });
+            unreachable;
+        }
     }
 
     fn debug_new() @This() {
@@ -88,7 +103,7 @@ pub const CartridgeHeader = extern struct {
 test "struct CartridgeHeader" {
     try expect(@sizeOf(CartridgeHeader) == 80);
 
-    const bytes: [@sizeOf(CartridgeHeader)]u8 =
+    var bytes: [@sizeOf(CartridgeHeader)]u8 =
         [_]u8{ 0x01, 0x02, 0x03, 0x04 } // entry point
     ++ ([_]u8{0xFF} ** 48) // logo
     ++ @as([11]u8, "TestCartRid".*) // title
@@ -97,6 +112,11 @@ test "struct CartridgeHeader" {
     ++ [_]u8{ 0x03, 0x30, 0x03, 0x00 } // cartridge_type, rom_size, sram_size, destination
     ++ [_]u8{ 0x33, 0x00, 0x99, 0xAA, 0xBB } // old_license, game_version, header_checksum, global_checksum
     ;
+    var checksum: u8 = 0;
+    for (0x34..0x4D) |i| {
+        checksum +%= bytes[i];
+    }
+    bytes[0x4D] = checksum;
     const header = CartridgeHeader.from_bytes(bytes);
 
     const header_answer = CartridgeHeader{
@@ -113,7 +133,7 @@ test "struct CartridgeHeader" {
         .destination = 0x00,
         .old_license = 0x33,
         .game_version = 0x00,
-        .header_checksum = 0x99,
+        .header_checksum = checksum,
         .global_checksum = 0xBBAA,
     };
 
