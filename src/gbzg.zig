@@ -18,16 +18,21 @@ pub const LCD_INFO = struct {
     pub const pixels: usize = @as(usize, width) * @as(usize, height);
 };
 
+pub const Options = struct {
+    boot_only: bool = true,
+};
+
 pub const GameBoy = struct {
     cpu: Cpu,
     peripherals: Peripherals,
     lcd: LCD,
+    options: Options,
 
     const CPU_CLOCK_HZ: u128 = 4_194_304;
     const M_CYCLE_CLOCK: u128 = 4;
     const M_CYCLE_NANOS: u128 = M_CYCLE_CLOCK * 1_000_000_000 / CPU_CLOCK_HZ;
 
-    pub fn new(bootrom: Bootrom, renderer: Renderer) !@This() {
+    pub fn new(bootrom: Bootrom, renderer: Renderer, options: Options) !@This() {
         const peripherals = try Peripherals.new(bootrom);
         const lcd = try LCD.new(renderer);
         const cpu = Cpu.new();
@@ -36,6 +41,7 @@ pub const GameBoy = struct {
             .cpu = cpu,
             .peripherals = peripherals,
             .lcd = lcd,
+            .options = options,
         };
     }
 
@@ -53,6 +59,11 @@ pub const GameBoy = struct {
             const e = timer.read();
 
             for (0..@as(usize, @intCast((e - elapsed) / M_CYCLE_NANOS))) |_| {
+                if (self.options.boot_only and self.cpu.regs.pc == 0x78) {
+                    // PC=0x78 jumps to 0xFFE and starts executing the cartridge code.
+                    return;
+                }
+
                 self.cpu.emulate_cycle(&self.peripherals);
                 if (self.peripherals.ppu.emulate_cycle()) {
                     try self.lcd.draw(self.peripherals.ppu.buffer);

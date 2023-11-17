@@ -3,6 +3,7 @@ const Renderer = @import("lcd.zig").Renderer;
 const GameBoy = @import("gbzg.zig").GameBoy;
 const Bootrom = @import("bootrom.zig").Bootrom;
 const std = @import("std");
+const Options = @import("gbzg.zig").Options;
 
 fn read_bootrom() ![256]u8 {
     var f = try std.fs.cwd().openFile("dmg_bootrom.bin", .{});
@@ -19,7 +20,25 @@ fn read_bootrom() ![256]u8 {
     return buf;
 }
 
-pub fn start() !void {
+fn parse_args() !Options {
+    var options = Options{};
+
+    var args = std.process.args();
+    _ = args.skip();
+
+    while (args.next()) |arg| {
+        if (std.mem.eql(u8, arg, "--boot-only")) {
+            options.boot_only = true;
+        } else {
+            std.log.err("Unknown argument: {s}\n", .{arg});
+            return error.Unreachable;
+        }
+    }
+
+    return options;
+}
+
+pub fn start(options: Options) !void {
     var bootrom_bytes = try read_bootrom();
     const bootrom = Bootrom.new(&bootrom_bytes);
 
@@ -28,7 +47,7 @@ pub fn start() !void {
         .sixel = sixel,
     };
 
-    var gb = try GameBoy.new(bootrom, r);
+    var gb = try GameBoy.new(bootrom, r, options);
     defer {
         gb.deinit() catch unreachable;
     }
@@ -41,5 +60,7 @@ pub fn start() !void {
 }
 
 pub fn main() !void {
-    try start();
+    const options = try parse_args();
+
+    try start(options);
 }
