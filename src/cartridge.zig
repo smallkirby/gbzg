@@ -1,3 +1,13 @@
+pub const CartridgeType = enum(u8) {
+    ROMOnly = 0x00,
+    MBC1 = 0x01,
+    MBC1_SRAM = 0x02,
+    MBC1_SRAM_BATT = 0x03,
+    ROM_SRAM = 0x08,
+    ROM_SRAM_BATT = 0x09,
+    _,
+};
+
 /// Representation of a cartridge header.
 /// Memory layout is guranteed.
 pub const CartridgeHeader = extern struct {
@@ -25,7 +35,7 @@ pub const CartridgeHeader = extern struct {
     /// Whether if SGB mode is requested
     sgb_flag: u8,
     /// Cartridge type (HW architecture info)
-    cartridge_type: u8,
+    cartridge_type: CartridgeType,
     /// ROM size (32KiB * 2^N)
     raw_rom_size: u8,
     /// SRAM Size
@@ -70,7 +80,7 @@ pub const CartridgeHeader = extern struct {
             .cgb_flag = 0x01,
             .new_license = 0x5678,
             .sgb_flag = 0x00,
-            .cartridge_type = 0x03,
+            .cartridge_type = .MBC1_SRAM_BATT,
             .raw_rom_size = 0x0,
             .raw_sram_size = CartridgeHeader.SRAM_SIZE_TYPE._NONE,
             .destination = 0x00,
@@ -127,7 +137,7 @@ test "struct CartridgeHeader" {
         .cgb_flag = 0x01,
         .new_license = 0x5678,
         .sgb_flag = 0x00,
-        .cartridge_type = 0x03,
+        .cartridge_type = .MBC1_SRAM_BATT,
         .raw_rom_size = 0x30,
         .raw_sram_size = CartridgeHeader.SRAM_SIZE_TYPE._32KB,
         .destination = 0x00,
