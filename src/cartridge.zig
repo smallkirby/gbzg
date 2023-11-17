@@ -1,6 +1,15 @@
 /// Representation of a cartridge header.
 /// Memory layout is guranteed.
 pub const CartridgeHeader = extern struct {
+    const SRAM_SIZE_TYPE = enum(u8) {
+        _NONE = 0x00,
+        _2KB = 0x01,
+        _8KB = 0x02,
+        _32KB = 0x03,
+        _128KB = 0x04,
+        _64KB = 0x05,
+    };
+
     /// Entry point
     entry_point: u32,
     /// Compressed Nintendo logo
@@ -18,9 +27,9 @@ pub const CartridgeHeader = extern struct {
     /// Cartridge type (HW architecture info)
     cartridge_type: u8,
     /// ROM size (32KiB * 2^N)
-    rom_size: u8,
+    raw_rom_size: u8,
     /// SRAM Size
-    sram_size: u8,
+    raw_sram_size: SRAM_SIZE_TYPE,
     /// Whether if the cartridge is for abroad
     destination: u8,
     /// Publisher code (for old games)
@@ -32,8 +41,47 @@ pub const CartridgeHeader = extern struct {
     /// Chceksum of the whole cardridge ROM
     global_checksum: u16,
 
+    /// Instantiate from a raw image.
     pub fn from_bytes(bytes: [@sizeOf(@This())]u8) @This() {
         return @as(CartridgeHeader, @bitCast(bytes));
+    }
+
+    fn debug_new() @This() {
+        return @This(){
+            .entry_point = 0x00000000,
+            .logo = [_]u8{0xFF} ** 48,
+            .title = "TestCartRid".*,
+            .maker = "ABCD".*,
+            .cgb_flag = 0x01,
+            .new_license = 0x5678,
+            .sgb_flag = 0x00,
+            .cartridge_type = 0x03,
+            .raw_rom_size = 0x0,
+            .raw_sram_size = CartridgeHeader.SRAM_SIZE_TYPE._NONE,
+            .destination = 0x00,
+            .old_license = 0x33,
+            .game_version = 0x00,
+            .header_checksum = 0x99,
+            .global_checksum = 0xBBAA,
+        };
+    }
+
+    fn sram_size(self: @This()) usize {
+        return switch (self.raw_sram_size) {
+            ._NONE => 0,
+            ._2KB => 0x0800,
+            ._8KB => 0x2000,
+            ._32KB => 0x8000,
+            ._128KB => 0x20000,
+            ._64KB => 0x10000,
+        };
+    }
+
+    fn rom_size(self: @This()) usize {
+        if (self.raw_rom_size > 0x08) {
+            unreachable;
+        }
+        return @as(usize, 1) << @truncate(self.raw_rom_size + 15);
     }
 };
 
@@ -46,7 +94,7 @@ test "struct CartridgeHeader" {
     ++ @as([11]u8, "TestCartRid".*) // title
     ++ @as([4]u8, "ABCD".*) // maker
     ++ [_]u8{ 0x01, 0x78, 0x56, 0x00 } // cgb_flag, new_license, sgb_flag
-    ++ [_]u8{ 0x03, 0x30, 0x50, 0x00 } // cartridge_type, rom_size, sram_size, destination
+    ++ [_]u8{ 0x03, 0x30, 0x03, 0x00 } // cartridge_type, rom_size, sram_size, destination
     ++ [_]u8{ 0x33, 0x00, 0x99, 0xAA, 0xBB } // old_license, game_version, header_checksum, global_checksum
     ;
     const header = CartridgeHeader.from_bytes(bytes);
@@ -60,8 +108,8 @@ test "struct CartridgeHeader" {
         .new_license = 0x5678,
         .sgb_flag = 0x00,
         .cartridge_type = 0x03,
-        .rom_size = 0x30,
-        .sram_size = 0x50,
+        .raw_rom_size = 0x30,
+        .raw_sram_size = CartridgeHeader.SRAM_SIZE_TYPE._32KB,
         .destination = 0x00,
         .old_license = 0x33,
         .game_version = 0x00,
@@ -70,6 +118,34 @@ test "struct CartridgeHeader" {
     };
 
     try expect(std.meta.eql(header, header_answer));
+}
+
+test "ROM sizes" {
+    var cartridge = CartridgeHeader.debug_new();
+
+    // ROM
+    try expect(cartridge.sram_size() == 0x0000);
+    cartridge.raw_sram_size = ._2KB;
+    try expect(cartridge.sram_size() == 0x0800);
+    cartridge.raw_sram_size = ._8KB;
+    try expect(cartridge.sram_size() == 0x2000);
+    cartridge.raw_sram_size = ._32KB;
+    try expect(cartridge.sram_size() == 0x8000);
+    cartridge.raw_sram_size = ._128KB;
+    try expect(cartridge.sram_size() == 0x20000);
+    cartridge.raw_sram_size = ._64KB;
+    try expect(cartridge.sram_size() == 0x10000);
+
+    // SRAM
+    try expect(cartridge.rom_size() == 0x8000);
+    cartridge.raw_rom_size = 0x01;
+    try expect(cartridge.rom_size() == 0x10000);
+    cartridge.raw_rom_size = 0x02;
+    try expect(cartridge.rom_size() == 0x20000);
+    cartridge.raw_rom_size = 0x03;
+    try expect(cartridge.rom_size() == 0x40000);
+    cartridge.raw_rom_size = 0x04;
+    try expect(cartridge.rom_size() == 0x80000);
 }
 
 const std = @import("std");
