@@ -1,3 +1,74 @@
+const std = @import("std");
+const Mbc = @import("mbc.zig").Mbc;
+const gbzg = @import("gbzg.zig");
+
+/// Representation of a cartridge.
+pub const Cartridge = struct {
+    rom: []u8,
+    sram: []u8,
+    mbc: Mbc,
+
+    pub fn new(rom: []u8) !@This() {
+        const header = CartridgeHeader.from_bytes(rom[0..@sizeOf(CartridgeHeader)].*);
+
+        const title = &header.title[0..];
+        const rom_size = header.rom_size();
+        const sram_size = header.sram_size();
+        const num_rom_banks = header.rom_size() >> 14; // each ROM bank is 16KiB
+        const mbc = Mbc.new(header.cartridge_type, num_rom_banks);
+
+        std.log.info("ROM loaded (title=\"{s}\", rom_size=0x{X} srom_size=0x{X})", .{
+            title,
+            rom_size,
+            sram_size,
+        });
+
+        if (rom_size != rom.len) {
+            std.log.err("ROM size mismatch: expected {}, got {}\n", .{ rom_size, rom.len });
+            unreachable;
+        }
+
+        const sram = try gbzg.cartridge_allocator.alloc(u8, sram_size);
+        return @This(){
+            .rom = rom,
+            .sram = sram,
+            .mbc = mbc,
+        };
+    }
+
+    pub fn read(self: @This(), addr: u16) u8 {
+        return switch (addr) {
+            // ROM
+            0x0000...0x7FFF => self.rom[self.mbc.get_addr(addr) & (self.rom.len - 1)],
+            // SRAM
+            0xA000...0xBFFF => switch (self.mbc) {
+                .nombc => self.sram[@as(usize, addr) & (self.sram.len - 1)],
+                .mbc1 => |mbc1| if (mbc1.sram_enabled) b: {
+                    break :b self.sram[self.mbc.get_addr(addr) & (self.sram.len - 1)];
+                } else b: {
+                    break :b 0xFF;
+                },
+            },
+            else => unreachable,
+        };
+    }
+
+    pub fn write(self: *@This(), addr: u16, val: u8) void {
+        switch (addr) {
+            // ROM
+            0x0000...0x7FFF => self.mbc.write(addr, val),
+            // SRAM
+            0xA000...0xBFFF => switch (self.mbc) {
+                .nombc => self.sram[@as(usize, addr) & (self.sram.len - 1)] = val,
+                .mbc1 => |mbc1| if (mbc1.sram_enabled) {
+                    self.sram[self.mbc.get_addr(addr) & (self.sram.len - 1)] = val;
+                },
+            },
+            else => unreachable,
+        }
+    }
+};
+
 pub const CartridgeType = enum(u8) {
     ROMOnly = 0x00,
     MBC1 = 0x01,
@@ -178,5 +249,82 @@ test "ROM sizes" {
     try expect(cartridge.rom_size() == 0x80000);
 }
 
-const std = @import("std");
+test "cartridge init" {
+    const rom_size: usize = 1 << 18;
+    var header = CartridgeHeader{
+        .entry_point = 0x04030201,
+        .logo = [_]u8{0xFF} ** 48,
+        .title = "TestCartRid".*,
+        .maker = "ABCD".*,
+        .cgb_flag = 0x01,
+        .new_license = 0x5678,
+        .sgb_flag = 0x00,
+        .cartridge_type = .MBC1_SRAM_BATT,
+        .raw_rom_size = 0x03,
+        .raw_sram_size = CartridgeHeader.SRAM_SIZE_TYPE._32KB,
+        .destination = 0x00,
+        .old_license = 0x33,
+        .game_version = 0x00,
+        .header_checksum = 0,
+        .global_checksum = 0xBBAA,
+    };
+    var checksum: u8 = 0;
+    for (0x34..0x4D) |i| {
+        checksum +%= @as([@sizeOf(CartridgeHeader)]u8, @bitCast(header))[i];
+    }
+    header.header_checksum = checksum;
+
+    var rom = [_]u8{0x00} ** rom_size;
+    for (0..@sizeOf(CartridgeHeader)) |i| {
+        rom[i] = @as([@sizeOf(CartridgeHeader)]u8, @bitCast(header))[i];
+    }
+
+    var cartridge = try Cartridge.new(&rom);
+    _ = cartridge.mbc.write(0x0000, 0x00);
+}
+
+test "cartridge IO" {
+    const rom_size: usize = 1 << 18;
+    var header = CartridgeHeader{
+        .entry_point = 0x04030201,
+        .logo = [_]u8{0xFF} ** 48,
+        .title = "TestCartRid".*,
+        .maker = "ABCD".*,
+        .cgb_flag = 0x01,
+        .new_license = 0x5678,
+        .sgb_flag = 0x00,
+        .cartridge_type = .MBC1_SRAM_BATT,
+        .raw_rom_size = 0x03,
+        .raw_sram_size = CartridgeHeader.SRAM_SIZE_TYPE._32KB,
+        .destination = 0x00,
+        .old_license = 0x33,
+        .game_version = 0x00,
+        .header_checksum = 0,
+        .global_checksum = 0xBBAA,
+    };
+    var checksum: u8 = 0;
+    for (0x34..0x4D) |i| {
+        checksum +%= @as([@sizeOf(CartridgeHeader)]u8, @bitCast(header))[i];
+    }
+    header.header_checksum = checksum;
+
+    var rom = [_]u8{0x00} ** rom_size;
+    for (0..@sizeOf(CartridgeHeader)) |i| {
+        rom[i] = @as([@sizeOf(CartridgeHeader)]u8, @bitCast(header))[i];
+    }
+
+    var cartridge = try Cartridge.new(&rom);
+    cartridge.write(0x0000, 0x0A); // register. enable SRAM
+    cartridge.write(0x2000, 0b1100_0000); // register. low bank (=0)
+    cartridge.write(0x4000, 0b1101_1000); // register. high bank (=0)
+    cartridge.write(0x6000, 0x10); // register. bank mode (=0)
+    cartridge.write(0xA000, 0x78); // SRAM
+
+    try expect(cartridge.mbc.mbc1.sram_enabled == true);
+    try expect(cartridge.sram.len == 0x8000);
+
+    try expect(cartridge.read(0x0000) == 0x01); // entry_point[0]
+    try expect(cartridge.read(0xA000) == 0x78); // SRAM
+}
+
 const expect = std.testing.expect;
