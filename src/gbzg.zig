@@ -4,6 +4,7 @@ const Renderer = @import("lcd.zig").Renderer;
 const LCD = @import("lcd.zig").LCD;
 const Peripherals = @import("peripherals.zig").Peripherals;
 const Cpu = @import("cpu/cpu.zig").Cpu;
+const Cartridge = @import("cartridge.zig").Cartridge;
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 pub const default_allocator = gpa.allocator();
@@ -37,8 +38,8 @@ pub const GameBoy = struct {
     const M_CYCLE_CLOCK: u128 = 4;
     const M_CYCLE_NANOS: u128 = M_CYCLE_CLOCK * 1_000_000_000 / CPU_CLOCK_HZ;
 
-    pub fn new(bootrom: Bootrom, renderer: Renderer, options: Options) !@This() {
-        const peripherals = try Peripherals.new(bootrom);
+    pub fn new(bootrom: Bootrom, cartdige: Cartridge, renderer: Renderer, options: Options) !@This() {
+        const peripherals = try Peripherals.new(bootrom, cartdige);
         const lcd = try LCD.new(renderer);
         const cpu = Cpu.new();
 

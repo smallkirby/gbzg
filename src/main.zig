@@ -2,6 +2,7 @@ const Sixel = @import("render/sixel.zig").Sixel;
 const Renderer = @import("lcd.zig").Renderer;
 const GameBoy = @import("gbzg.zig").GameBoy;
 const Bootrom = @import("bootrom.zig").Bootrom;
+const Cartridge = @import("cartridge.zig").Cartridge;
 const std = @import("std");
 const Options = @import("gbzg.zig").Options;
 
@@ -44,12 +45,19 @@ pub fn start(options: Options) !void {
     var bootrom_bytes = try read_bootrom();
     const bootrom = Bootrom.new(&bootrom_bytes);
 
+    var cartridge = if (options.boot_only) b: {
+        break :b try Cartridge.debug_new();
+    } else {
+        // TODO
+        unreachable;
+    };
+
     var sixel = try Sixel.new(options);
     var r: Renderer = .{
         .sixel = sixel,
     };
 
-    var gb = try GameBoy.new(bootrom, r, options);
+    var gb = try GameBoy.new(bootrom, cartridge, r, options);
     defer {
         gb.deinit() catch unreachable;
     }

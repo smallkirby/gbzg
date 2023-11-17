@@ -11,7 +11,7 @@ pub const Cartridge = struct {
     pub fn new(rom: []u8) !@This() {
         const header = CartridgeHeader.from_bytes(rom[0..@sizeOf(CartridgeHeader)].*);
 
-        const title = &header.title[0..];
+        const title = header.title[0..];
         const rom_size = header.rom_size();
         const sram_size = header.sram_size();
         const num_rom_banks = header.rom_size() >> 14; // each ROM bank is 16KiB
@@ -34,6 +34,39 @@ pub const Cartridge = struct {
             .sram = sram,
             .mbc = mbc,
         };
+    }
+
+    pub fn debug_new() !@This() {
+        const rom_size: usize = 1 << 18;
+        var header = CartridgeHeader{
+            .entry_point = 0x04030201,
+            .logo = [_]u8{0xFF} ** 48,
+            .title = "TestCartRid".*,
+            .maker = "ABCD".*,
+            .cgb_flag = 0x01,
+            .new_license = 0x5678,
+            .sgb_flag = 0x00,
+            .cartridge_type = .MBC1_SRAM_BATT,
+            .raw_rom_size = 0x03,
+            .raw_sram_size = ._32KB,
+            .destination = 0x00,
+            .old_license = 0x33,
+            .game_version = 0x00,
+            .header_checksum = 0,
+            .global_checksum = 0xBBAA,
+        };
+        var checksum: u8 = 0;
+        for (0x34..0x4D) |i| {
+            checksum +%= @as([@sizeOf(CartridgeHeader)]u8, @bitCast(header))[i];
+        }
+        header.header_checksum = checksum;
+
+        var rom = [_]u8{0x00} ** rom_size;
+        for (0..@sizeOf(CartridgeHeader)) |i| {
+            rom[i] = @as([@sizeOf(CartridgeHeader)]u8, @bitCast(header))[i];
+        }
+
+        return try Cartridge.new(&rom);
     }
 
     pub fn read(self: @This(), addr: u16) u8 {
