@@ -5,6 +5,19 @@ pub const Mbc = union(enum) {
     nombc: struct {},
     mbc1: Mbc1,
 
+    pub const Mbc1 = struct {
+        /// Whether SRAM is enabled. Mapped to 0x0000-0x1FFF of lower 4bits.
+        sram_enabled: bool = false,
+        /// Mapped to 0x2000-0x3FFF of lower 5bits.
+        low_bank: usize,
+        /// Mapped to 0x4000-0x5FFF of lower 2bits.
+        high_bank: usize,
+        /// Mapped to 0x6000-0x7FFF of lower 1bit.
+        bank_mode: bool,
+        /// Number of ROM banks.
+        num_rom_banks: usize,
+    };
+
     /// Instantiate a memory bank controller.
     pub fn new(cartridge_type: CardridgeType, num_rom_banks: usize) @This() {
         return switch (cartridge_type) {
@@ -42,19 +55,6 @@ pub const Mbc = union(enum) {
             },
         }
     }
-};
-
-pub const Mbc1 = struct {
-    /// Whether SRAM is enabled. Mapped to 0x0000-0x1FFF of lower 4bits.
-    sram_enabled: bool = false,
-    /// Mapped to 0x2000-0x3FFF of lower 5bits.
-    low_bank: usize,
-    /// Mapped to 0x4000-0x5FFF of lower 2bits.
-    high_bank: usize,
-    /// Mapped to 0x6000-0x7FFF of lower 1bit.
-    bank_mode: bool,
-    /// Number of ROM banks.
-    num_rom_banks: usize,
 };
 
 test "MBC init" {
