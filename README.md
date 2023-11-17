@@ -6,9 +6,15 @@ Forked from [gb-emu](https://github.com/take44444/gb-emu).
 ![Test](https://github.com/smallkirby/gbzg/actions/workflows/test.yml/badge.svg)
 ![BootROM](https://github.com/smallkirby/gbzg/actions/workflows/boot.yml/badge.svg)
 
-## Development
+| <img src="docs/boot.gif" width="400" > |
+|:--:|
+| *Boot [Free ROM](https://github.com/take44444/Gameboy-free_bootrom)* |
 
-TBD
+## Build
+
+```sh
+zig build run
+```
 
 ## Rendrer
 
