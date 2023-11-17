@@ -164,6 +164,7 @@ pub const Sixel = struct {
 
     pub fn deinit(self: @This()) SixelErrors!void {
         if (!self.options.no_graphics) {
+            _ = c.printf("\x1B[1B"); // move cursor down by 1
             try self.restore_terminal();
         }
     }

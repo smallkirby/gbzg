@@ -8,11 +8,11 @@ pub const Mbc = union(enum) {
     pub const Mbc1 = struct {
         /// Whether SRAM is enabled. Mapped to 0x0000-0x1FFF of lower 4bits.
         sram_enabled: bool = false,
-        /// Mapped to 0x2000-0x3FFF of lower 5bits.
+        /// Mapped to 0x2000-0x3FFF. Lower 5bits are used.
         low_bank: usize,
-        /// Mapped to 0x4000-0x5FFF of lower 2bits.
+        /// Mapped to 0x4000-0x5FFF. Lower 2bits are used.
         high_bank: usize,
-        /// Mapped to 0x6000-0x7FFF of lower 1bit.
+        /// Mapped to 0x6000-0x7FFF. LSB is used.
         bank_mode: bool,
         /// Number of ROM banks.
         num_rom_banks: usize,
