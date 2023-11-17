@@ -1,5 +1,6 @@
 const std = @import("std");
 const gbzg = @import("../gbzg.zig");
+const Options = gbzg.Options;
 const LCD_INFO = gbzg.LCD_INFO;
 const sixel = @cImport({
     @cInclude("sixel/sixel.h");
@@ -16,13 +17,15 @@ pub const Sixel = struct {
     buffer: [LCD_INFO.pixels]u8,
     old_termios: ?c.termios,
 
+    options: Options,
+
     pub const SixelErrors = error{
         OutputNewError,
         EncodeError,
         TermionError,
     };
 
-    pub fn new() !@This() {
+    pub fn new(options: Options) !@This() {
         const buffer = try gbzg.default_allocator.alloc([LCD_INFO.pixels]u8, 1);
 
         var ret = @This(){
@@ -30,12 +33,15 @@ pub const Sixel = struct {
             .sixel_dither = null,
             .buffer = buffer[0],
             .old_termios = null,
+            .options = options,
         };
 
-        try ret.set_terminal_raw();
-        try ret.output_new();
-        try ret.dither_get();
-        try ret.dither_set_pixelformat();
+        if (!ret.options.no_graphics) {
+            try ret.set_terminal_raw();
+            try ret.output_new();
+            try ret.dither_get();
+            try ret.dither_set_pixelformat();
+        }
 
         return ret;
     }
@@ -62,6 +68,10 @@ pub const Sixel = struct {
     }
 
     pub fn draw(self: *@This(), pixels: []u8) SixelErrors!void {
+        if (self.options.no_graphics) {
+            return;
+        }
+
         self.scroll_to_top();
 
         for (0..LCD_INFO.pixels) |i| {
@@ -153,6 +163,8 @@ pub const Sixel = struct {
     }
 
     pub fn deinit(self: @This()) SixelErrors!void {
-        try self.restore_terminal();
+        if (!self.options.no_graphics) {
+            try self.restore_terminal();
+        }
     }
 };

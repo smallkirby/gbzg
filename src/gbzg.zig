@@ -18,8 +18,12 @@ pub const LCD_INFO = struct {
     pub const pixels: usize = @as(usize, width) * @as(usize, height);
 };
 
+/// User-provided options.
 pub const Options = struct {
+    /// Exit the emulator after the BootROM has finished.
     boot_only: bool = true,
+    /// Disable graphics.
+    no_graphics: bool = false,
 };
 
 pub const GameBoy = struct {

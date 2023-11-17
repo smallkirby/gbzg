@@ -29,6 +29,8 @@ fn parse_args() !Options {
     while (args.next()) |arg| {
         if (std.mem.eql(u8, arg, "--boot-only")) {
             options.boot_only = true;
+        } else if (std.mem.eql(u8, arg, "--no-graphics")) {
+            options.no_graphics = true;
         } else {
             std.log.err("Unknown argument: {s}\n", .{arg});
             return error.Unreachable;
@@ -42,7 +44,7 @@ pub fn start(options: Options) !void {
     var bootrom_bytes = try read_bootrom();
     const bootrom = Bootrom.new(&bootrom_bytes);
 
-    var sixel = try Sixel.new();
+    var sixel = try Sixel.new(options);
     var r: Renderer = .{
         .sixel = sixel,
     };
@@ -63,4 +65,6 @@ pub fn main() !void {
     const options = try parse_args();
 
     try start(options);
+
+    std.log.info("End Of Life :)", .{});
 }
