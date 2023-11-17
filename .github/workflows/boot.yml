@@ -22,8 +22,8 @@ jobs:
 
       - name: Install libsixel
         run: |
-          apt update
-          apt install -y libsixel-dev
+          sudo apt update
+          sudo apt install -y libsixel-dev
 
       - name: Install zig
         run: |
