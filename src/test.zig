@@ -8,6 +8,7 @@ comptime {
     _ = @import("lcd.zig");
     _ = @import("cartridge.zig");
     _ = @import("mbc.zig");
+    _ = @import("interrupts.zig");
 
     _ = @import("cpu/test.zig");
     _ = @import("render/sixel.zig");

@@ -432,6 +432,40 @@ pub fn ret(cpu: *Cpu, bus: *Peripherals) void {
     }
 }
 
+/// Enable IME and then ret.
+pub fn reti(cpu: *Cpu, bus: *Peripherals) void {
+    const state = struct {
+        var step: usize = 0;
+    };
+    switch (state.step) {
+        0 => {
+            if (pop16(cpu, bus)) |v| {
+                cpu.regs.pc = v;
+                state.step = 1;
+            }
+            return;
+        },
+        1 => {
+            cpu.interrupts.ime = true;
+            state.step = 0;
+            cpu.fetch(bus);
+        },
+        else => unreachable,
+    }
+}
+
+/// Enable IME.
+pub fn ei(cpu: *Cpu, bus: *Peripherals) void {
+    cpu.fetch(bus);
+    cpu.interrupts.ime = true;
+}
+
+/// Disable IME.
+pub fn di(cpu: *Cpu, bus: *Peripherals) void {
+    cpu.fetch(bus);
+    cpu.interrupts.ime = false;
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -792,6 +826,47 @@ test "ret" {
     }
     try expect(cpu.regs.sp == 0xC100 + 2);
     try expect(cpu.regs.pc == 0xC030 + 1); // +1 for fetch. Is it right? TODO
+}
+
+test "reti" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // 4-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.sp = 0xC100;
+    peripherals.write(cpu.regs.sp + 0, 0x30);
+    peripherals.write(cpu.regs.sp + 1, 0xC0);
+    try expect(cpu.interrupts.ime == false);
+    for (0..4) |_| {
+        reti(&cpu, &peripherals);
+    }
+
+    try expect(cpu.regs.sp == 0xC100 + 2);
+    try expect(cpu.regs.pc == 0xC030 + 1); // +1 for fetch.
+    try expect(cpu.interrupts.ime == true);
+}
+
+test "ei/di" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // 1-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.interrupts.ime = false;
+    for (0..1) |_| {
+        ei(&cpu, &peripherals);
+    }
+    try expect(cpu.regs.pc == 0xC001);
+    try expect(cpu.interrupts.ime == true);
+
+    // 1-cycle
+    cpu.regs.pc = 0xC000;
+    for (0..1) |_| {
+        di(&cpu, &peripherals);
+    }
+    try expect(cpu.regs.pc == 0xC001);
+    try expect(cpu.interrupts.ime == false);
 }
 
 const expect = @import("std").testing.expect;

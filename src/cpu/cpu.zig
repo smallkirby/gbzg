@@ -1,4 +1,5 @@
 const Registers = @import("register.zig").Registers;
+const Interrupts = @import("../interrupts.zig").Interrupts;
 const Peripherals = @import("../peripherals.zig").Peripherals;
 const Opcode = @import("instruction.zig").Opcode;
 const decodes = @import("decode.zig");
@@ -22,11 +23,14 @@ const Ctx = struct {
 pub const Cpu = struct {
     regs: Registers,
     ctx: Ctx,
+    /// Interrupts
+    interrupts: Interrupts,
 
     pub fn new() Cpu {
         return Cpu{
             .regs = Registers.new(),
             .ctx = Ctx.new(),
+            .interrupts = Interrupts.new(),
         };
     }
 
