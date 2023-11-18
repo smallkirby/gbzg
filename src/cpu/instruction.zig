@@ -611,6 +611,18 @@ pub fn xor(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
     }
 }
 
+/// Rotate A-register left, then set flags according to the result.
+pub fn rlca(cpu: *Cpu, bus: *Peripherals) void {
+    const res = (cpu.regs.a << 1) | (cpu.regs.a >> 7);
+    cpu.regs.set_zf(false); // unconditional
+    cpu.regs.set_nf(false); // unconditional
+    cpu.regs.set_hf(false); // unconditional
+    cpu.regs.set_cf((cpu.regs.a & 0x80) != 0);
+    cpu.regs.a = res;
+
+    cpu.fetch(bus);
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -1507,6 +1519,35 @@ test "xor" {
         xor(&cpu, &peripherals, .{ .indirect = .BC });
     }
     try expect(cpu.regs.a == 0x26);
+    try expect(cpu.regs.zf() == false);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.hf() == false);
+    try expect(cpu.regs.cf() == false);
+}
+
+test "rlca" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // 1-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.a = 0b1000_0001;
+    for (0..1) |_| {
+        rlca(&cpu, &peripherals);
+    }
+    try expect(cpu.regs.a == 0b0000_0011);
+    try expect(cpu.regs.zf() == false);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.hf() == false);
+    try expect(cpu.regs.cf() == true);
+    try expect(cpu.regs.pc == 0xC001);
+
+    cpu.regs.pc = 0xC000;
+    cpu.regs.a = 0b0000_0001;
+    for (0..1) |_| {
+        rlca(&cpu, &peripherals);
+    }
+    try expect(cpu.regs.a == 0b0000_0010);
     try expect(cpu.regs.zf() == false);
     try expect(cpu.regs.nf() == false);
     try expect(cpu.regs.hf() == false);
