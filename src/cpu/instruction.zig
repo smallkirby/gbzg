@@ -580,6 +580,22 @@ pub fn and_(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
     }
 }
 
+/// Logical OR src and A-register, then set flags according to the result.
+/// Note that `or` is a keyword in Zig, so we use `or_` instead.
+pub fn or_(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
+    if (src.read(cpu, bus)) |v| {
+        const u: u8 = @truncate(v);
+        const res = cpu.regs.a | u;
+        cpu.regs.set_zf(res == 0);
+        cpu.regs.set_nf(false); // unconditional
+        cpu.regs.set_hf(false); // unconditional
+        cpu.regs.set_cf(false); // unconditional
+        cpu.regs.a = res;
+
+        cpu.fetch(bus);
+    }
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -1365,6 +1381,63 @@ test "and_" {
     try expect(cpu.regs.zf() == false);
     try expect(cpu.regs.nf() == false);
     try expect(cpu.regs.hf() == true);
+    try expect(cpu.regs.cf() == false);
+}
+
+test "or_" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // src=Reg8, 1-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.a = 0x12;
+    cpu.regs.b = 0x34;
+    for (0..1) |_| {
+        or_(&cpu, &peripherals, .{ .reg8 = .B });
+    }
+    try expect(cpu.regs.a == 0x36);
+    try expect(cpu.regs.zf() == false);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.hf() == false);
+    try expect(cpu.regs.cf() == false);
+    try expect(cpu.regs.pc == 0xC001);
+
+    cpu.regs.a = 0x80;
+    cpu.regs.b = 0x01;
+    for (0..1) |_| {
+        or_(&cpu, &peripherals, .{ .reg8 = .B });
+    }
+    try expect(cpu.regs.a == 0x81);
+    try expect(cpu.regs.zf() == false);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.hf() == false);
+    try expect(cpu.regs.cf() == false);
+
+    // src=Imm8, 2-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.a = 0x12;
+    peripherals.write(&cpu.interrupts, cpu.regs.pc, 0x34);
+    for (0..2) |_| {
+        or_(&cpu, &peripherals, .{ .imm8 = .{} });
+    }
+    try expect(cpu.regs.a == 0x36);
+    try expect(cpu.regs.zf() == false);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.hf() == false);
+    try expect(cpu.regs.cf() == false);
+
+    // src=Indirect, 2-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.a = 0x12;
+    cpu.regs.write_bc(0xC000);
+    peripherals.write(&cpu.interrupts, cpu.regs.bc(), 0x34);
+    for (0..2) |_| {
+        or_(&cpu, &peripherals, .{ .indirect = .BC });
+    }
+    try expect(cpu.regs.a == 0x36);
+    try expect(cpu.regs.zf() == false);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.hf() == false);
     try expect(cpu.regs.cf() == false);
 }
 
