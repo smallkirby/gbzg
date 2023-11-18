@@ -3,6 +3,8 @@ const Interrupts = @import("../interrupts.zig").Interrupts;
 const Peripherals = @import("../peripherals.zig").Peripherals;
 const Opcode = @import("instruction.zig").Opcode;
 const decodes = @import("decode.zig");
+const insts = @import("instruction.zig");
+const InterruptsEnableBits = @import("../interrupts.zig").Interrupts.InterruptsEnableBits;
 
 /// Context necessary to handle multi-cycle instructions
 const Ctx = struct {
@@ -10,11 +12,14 @@ const Ctx = struct {
     opcode: u8,
     /// Now parsing 0xCB prefixed instructions
     cb: bool,
+    /// Now handling an interrupt
+    intr: bool,
 
     pub fn new() Ctx {
         return Ctx{
             .opcode = 0,
             .cb = false,
+            .intr = false,
         };
     }
 };
@@ -37,7 +42,12 @@ pub const Cpu = struct {
     /// Fetch the next opcode and increment the PC
     pub fn fetch(self: *@This(), bus: *Peripherals) void {
         self.ctx.opcode = bus.read(&self.interrupts, self.regs.pc);
-        self.regs.pc +%= 1;
+        if (self.interrupts.ime and self.interrupts.get_interrupt() != 0) {
+            self.ctx.intr = true;
+        } else {
+            self.regs.pc +%= 1;
+            self.ctx.intr = false;
+        }
         self.ctx.cb = false;
     }
 
@@ -53,7 +63,43 @@ pub const Cpu = struct {
     /// Emulate a single cycle
     pub fn emulate_cycle(self: *@This(), bus: *Peripherals) void {
         //self.debug_print_regs();
-        self.decode(bus);
+
+        if (self.ctx.intr) {
+            self.call_isr(bus);
+        } else {
+            self.decode(bus);
+        }
+    }
+
+    /// Call the interrupt service routine
+    pub fn call_isr(self: *@This(), bus: *Peripherals) void {
+        const state = struct {
+            var step: u8 = 0;
+        };
+
+        switch (state.step) {
+            0 => if (insts.push16(self, bus, self.regs.pc)) |_| {
+                const highest_intr = InterruptsEnableBits.get_highest(self.interrupts.get_interrupt());
+                self.interrupts.int_flags &= ~@intFromEnum(highest_intr);
+
+                self.regs.pc = switch (highest_intr) {
+                    .VBLANK => 0x40,
+                    .STAT => 0x48,
+                    .TIMER => 0x50,
+                    .SERIAL => 0x58,
+                    .JOYPAD => 0x60,
+                    _ => unreachable,
+                };
+
+                state.step = 1;
+            },
+            1 => {
+                self.interrupts.ime = false;
+                state.step = 0;
+                self.fetch(bus);
+            },
+            else => unreachable,
+        }
     }
 
     fn debug_print_regs(self: @This()) void {
@@ -75,6 +121,28 @@ test "Basic fetch" {
     cpu.fetch(&peripherals);
     try expect(cpu.ctx.opcode == 0x00);
     try expect(cpu.regs.pc == 0xC001);
+}
+
+test "interrupt" {
+    var peripherals = try tutil.t_init_peripherals();
+    var cpu = Cpu.new();
+    const IBE = InterruptsEnableBits;
+
+    cpu.regs.pc = 0xC000;
+    cpu.interrupts.int_flags =
+        @intFromEnum(IBE.JOYPAD) |
+        @intFromEnum(IBE.VBLANK) |
+        @intFromEnum(IBE.SERIAL);
+    cpu.interrupts.ime = true;
+    cpu.interrupts.int_enable =
+        @intFromEnum(IBE.JOYPAD) |
+        @intFromEnum(IBE.VBLANK);
+
+    cpu.fetch(&peripherals);
+    try expect(cpu.regs.pc == 0xC000);
+    try expect(cpu.ctx.intr == true);
+
+    cpu.emulate_cycle(&peripherals);
 }
 
 const expect = @import("std").testing.expect;
