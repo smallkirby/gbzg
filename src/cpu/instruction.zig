@@ -764,6 +764,40 @@ pub fn rr(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
     }
 }
 
+/// Shift src left, then set flags according to the result.
+pub fn sla(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
+    const state = struct {
+        var step: usize = 0;
+        var cache: u8 = 0;
+    };
+    while (true) {
+        switch (state.step) {
+            0 => blk: {
+                if (src.read(cpu, bus)) |s| {
+                    const u: u8 = @truncate(s);
+                    const res = u << 1;
+                    cpu.regs.set_zf(res == 0);
+                    cpu.regs.set_nf(false); // unconditional
+                    cpu.regs.set_hf(false); // unconditional
+                    cpu.regs.set_cf((u & 0x80) != 0);
+                    state.cache = res;
+                    state.step = 1;
+                    break :blk;
+                }
+                return;
+            },
+            1 => {
+                if (src.write(cpu, bus, @intCast(state.cache))) |_| {
+                    cpu.fetch(bus);
+                    state.step = 0;
+                }
+                return;
+            },
+            else => unreachable,
+        }
+    }
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -1911,6 +1945,49 @@ test "rr" {
         rr(&cpu, &peripherals, .{ .indirect = .BC });
     }
     try expect(peripherals.read(&cpu.interrupts, cpu.regs.bc()) == 0b1000_0001);
+    try expect(cpu.regs.zf() == false);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.hf() == false);
+    try expect(cpu.regs.cf() == true);
+    try expect(cpu.regs.pc == 0xC001);
+}
+
+test "sla" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // src=Reg8, 1-cycle (+1 for decode)
+    cpu.regs.pc = 0xC000;
+    cpu.regs.b = 0b1000_0001;
+    for (0..1) |_| {
+        sla(&cpu, &peripherals, .{ .reg8 = .B });
+    }
+    try expect(cpu.regs.b == 0b0000_0010);
+    try expect(cpu.regs.zf() == false);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.hf() == false);
+    try expect(cpu.regs.cf() == true);
+    try expect(cpu.regs.pc == 0xC001);
+
+    cpu.regs.pc = 0xC000;
+    cpu.regs.b = 0b0000_0001;
+    for (0..1) |_| {
+        sla(&cpu, &peripherals, .{ .reg8 = .B });
+    }
+    try expect(cpu.regs.b == 0b0000_0010);
+    try expect(cpu.regs.zf() == false);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.hf() == false);
+    try expect(cpu.regs.cf() == false);
+
+    // src=Indirect, 3-cycle (+1 for decode)
+    cpu.regs.pc = 0xC000;
+    cpu.regs.write_bc(0xC000);
+    peripherals.write(&cpu.interrupts, cpu.regs.bc(), 0b1000_0001);
+    for (0..3) |_| {
+        sla(&cpu, &peripherals, .{ .indirect = .BC });
+    }
+    try expect(peripherals.read(&cpu.interrupts, cpu.regs.bc()) == 0b0000_0010);
     try expect(cpu.regs.zf() == false);
     try expect(cpu.regs.nf() == false);
     try expect(cpu.regs.hf() == false);
