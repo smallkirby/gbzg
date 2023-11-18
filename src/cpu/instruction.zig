@@ -481,6 +481,27 @@ pub fn di(cpu: *Cpu, bus: *Peripherals) void {
     cpu.interrupts.ime = false;
 }
 
+/// Halt CPU until an interrupt is requested.
+/// Noth that this instruction is equivalent to `nop` if interrupts are requested on the first cycle.
+pub fn halt(cpu: *Cpu, bus: *Peripherals) void {
+    const state = struct {
+        var step: usize = 0;
+    };
+
+    switch (state.step) {
+        0 => if (cpu.interrupts.get_interrupt() != 0) {
+            cpu.fetch(bus);
+        } else {
+            state.step = 1;
+        },
+        1 => if (cpu.interrupts.get_interrupt() != 0) {
+            state.step = 0;
+            cpu.fetch(bus);
+        },
+        else => unreachable,
+    }
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -882,6 +903,31 @@ test "ei/di" {
     }
     try expect(cpu.regs.pc == 0xC001);
     try expect(cpu.interrupts.ime == false);
+}
+
+test "halt" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    cpu.interrupts.int_enable = 0b0001_1111;
+    cpu.interrupts.int_flags = 0b0000_0001;
+
+    // 1-cycle if interrupts are requested
+    cpu.regs.pc = 0xC000;
+    halt(&cpu, &peripherals);
+    try expect(cpu.regs.pc == 0xC001);
+
+    // Halt until interrupts are requested
+    cpu.interrupts.int_flags = 0b0000_0000;
+    cpu.regs.pc = 0xC000;
+    for (0..0x20) |_| {
+        halt(&cpu, &peripherals);
+    }
+    try expect(cpu.regs.pc == 0xC000);
+
+    cpu.interrupts.int_flags = 0b0000_0001;
+    halt(&cpu, &peripherals);
+    try expect(cpu.regs.pc == 0xC001);
 }
 
 const expect = @import("std").testing.expect;
