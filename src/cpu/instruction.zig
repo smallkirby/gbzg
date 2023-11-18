@@ -517,6 +517,22 @@ pub fn add(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
     }
 }
 
+/// Add src + C-flag to A-register, then set flags according to the result.
+pub fn adc(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
+    if (src.read(cpu, bus)) |v| {
+        const c = @as(u8, @intFromBool(cpu.regs.cf()));
+        const u: u8 = @truncate(v);
+        const res = cpu.regs.a +% u +% c;
+        cpu.regs.set_zf(res == 0);
+        cpu.regs.set_nf(false); // unconditional
+        cpu.regs.set_hf((cpu.regs.a & 0x0F) + (u & 0x0F) + c > 0x0F);
+        cpu.regs.set_cf(res < cpu.regs.a or res < u);
+        cpu.regs.a = res;
+
+        cpu.fetch(bus);
+    }
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -1011,6 +1027,62 @@ test "add" {
     try expect(cpu.regs.nf() == false);
     try expect(cpu.regs.hf() == false);
     try expect(cpu.regs.cf() == false);
+}
+
+test "adc" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // src=Reg8, 1-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.a = 0x12;
+    cpu.regs.b = 0x34;
+    cpu.regs.set_cf(true);
+    for (0..1) |_| {
+        adc(&cpu, &peripherals, .{ .reg8 = .B });
+    }
+    try expect(cpu.regs.a == 0x47);
+    try expect(cpu.regs.zf() == false);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.hf() == false);
+    try expect(cpu.regs.cf() == false);
+    try expect(cpu.regs.pc == 0xC001);
+
+    cpu.regs.a = 0x80;
+    cpu.regs.b = 0xA3;
+    cpu.regs.set_cf(false);
+    for (0..1) |_| {
+        adc(&cpu, &peripherals, .{ .reg8 = .B });
+    }
+    try expect(cpu.regs.a == 0x23);
+    try expect(cpu.regs.zf() == false);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.hf() == false);
+    try expect(cpu.regs.cf() == true);
+
+    cpu.regs.a = 0x01;
+    cpu.regs.b = 0xFF;
+    cpu.regs.set_cf(false);
+    for (0..1) |_| {
+        adc(&cpu, &peripherals, .{ .reg8 = .B });
+    }
+    try expect(cpu.regs.a == 0x00);
+    try expect(cpu.regs.zf() == true);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.hf() == true);
+    try expect(cpu.regs.cf() == true);
+
+    cpu.regs.a = 0x01;
+    cpu.regs.b = 0xFF;
+    cpu.regs.set_cf(true);
+    for (0..1) |_| {
+        adc(&cpu, &peripherals, .{ .reg8 = .B });
+    }
+    try expect(cpu.regs.a == 0x01);
+    try expect(cpu.regs.zf() == false);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.hf() == true);
+    try expect(cpu.regs.cf() == true);
 }
 
 const expect = @import("std").testing.expect;
