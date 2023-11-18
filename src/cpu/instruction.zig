@@ -223,7 +223,7 @@ pub fn push16(cpu: *Cpu, bus: *Peripherals, val: u16) ?void {
             const lo: u8 = @truncate(val);
             const hi: u8 = @truncate(val >> 8);
             cpu.regs.sp -%= 1;
-            bus.write(cpu.regs.sp, hi);
+            bus.write(&cpu.interrupts, cpu.regs.sp, hi);
 
             state.cache = lo;
             state.step = 2;
@@ -231,7 +231,7 @@ pub fn push16(cpu: *Cpu, bus: *Peripherals, val: u16) ?void {
         },
         2 => {
             cpu.regs.sp -%= 1;
-            bus.write(cpu.regs.sp, @intCast(state.cache));
+            bus.write(&cpu.interrupts, cpu.regs.sp, @intCast(state.cache));
 
             state.step = 3;
             return null;
@@ -286,13 +286,13 @@ pub fn pop16(cpu: *Cpu, bus: *Peripherals) ?u16 {
 
     switch (state.step) {
         0 => {
-            state.cache = bus.read(cpu.regs.sp);
+            state.cache = bus.read(&cpu.interrupts, cpu.regs.sp);
             cpu.regs.sp +%= 1;
             state.step = 1;
             return null;
         },
         1 => {
-            state.cache |= @as(u16, bus.read(cpu.regs.sp)) << 8;
+            state.cache |= @as(u16, bus.read(&cpu.interrupts, cpu.regs.sp)) << 8;
             cpu.regs.sp +%= 1;
             state.step = 2;
             return null;
@@ -482,7 +482,7 @@ test "ld" {
     // d=Reg8, s=Imm8, 2-cycle, 2-PC
     cpu.regs.pc = 0xC000;
     cpu.regs.a = 0x00;
-    peripherals.write(0xC000, 0x89);
+    peripherals.write(&cpu.interrupts, 0xC000, 0x89);
     ld(&cpu, &peripherals, .{ .reg8 = .A }, .{ .imm8 = .{} });
     ld(&cpu, &peripherals, .{ .reg8 = .A }, .{ .imm8 = .{} });
     try expect(cpu.regs.a == 0x89);
@@ -491,19 +491,19 @@ test "ld" {
     // d=Direct8, s=Reg8, 4-cycle, 3-PC
     cpu.regs.pc = 0xC000;
     cpu.regs.a = 0x23;
-    peripherals.write(cpu.regs.pc, 0x20);
-    peripherals.write(cpu.regs.pc + 1, 0xC0);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc, 0x20);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc + 1, 0xC0);
     for (0..4) |_| {
         ld(&cpu, &peripherals, .{ .direct8 = .D }, .{ .reg8 = .A });
     }
-    try expect(peripherals.read(0xC020) == 0x23);
+    try expect(peripherals.read(&cpu.interrupts, 0xC020) == 0x23);
     try expect(cpu.regs.pc == 0xC003);
 
     // d=Reg16, s=Imm16, 3-cycle, 3-PC
     cpu.regs.write_bc(0x0000);
     cpu.regs.pc = 0xC000;
-    peripherals.write(cpu.regs.pc, 0x34);
-    peripherals.write(cpu.regs.pc + 1, 0x12);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc, 0x34);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc + 1, 0x12);
     for (0..3) |_| {
         ld(&cpu, &peripherals, .{ .reg16 = .BC }, .{ .imm16 = .{} });
     }
@@ -563,7 +563,7 @@ test "cp" {
     cpu.regs.a = 0x12;
     cpu.regs.pc = 0xC000;
     cpu.regs.write_bc(0xC000);
-    peripherals.write(cpu.regs.bc(), 0x12);
+    peripherals.write(&cpu.interrupts, cpu.regs.bc(), 0x12);
     for (0..2) |_| {
         cp(&cpu, &peripherals, .{ .indirect = .BC });
     }
@@ -601,11 +601,11 @@ test "inc" {
     // src=Indirect, 3-cycle, 1-PC
     cpu.regs.pc = 0xC000;
     cpu.regs.write_bc(0xC000);
-    peripherals.write(cpu.regs.bc(), 0x12);
+    peripherals.write(&cpu.interrupts, cpu.regs.bc(), 0x12);
     inc(&cpu, &peripherals, .{ .indirect = .BC });
     inc(&cpu, &peripherals, .{ .indirect = .BC });
     inc(&cpu, &peripherals, .{ .indirect = .BC });
-    try expect(peripherals.read(cpu.regs.bc()) == 0x13);
+    try expect(peripherals.read(&cpu.interrupts, cpu.regs.bc()) == 0x13);
     try expect(cpu.regs.zf() == false);
     try expect(cpu.regs.nf() == false);
     try expect(cpu.regs.hf() == false);
@@ -648,11 +648,11 @@ test "dec" {
     // src=Indirect, 3-cycle, 1-PC
     cpu.regs.pc = 0xC000;
     cpu.regs.write_bc(0xC000);
-    peripherals.write(cpu.regs.bc(), 0x10);
+    peripherals.write(&cpu.interrupts, cpu.regs.bc(), 0x10);
     dec(&cpu, &peripherals, .{ .indirect = .BC });
     dec(&cpu, &peripherals, .{ .indirect = .BC });
     dec(&cpu, &peripherals, .{ .indirect = .BC });
-    try expect(peripherals.read(cpu.regs.bc()) == 0x0F);
+    try expect(peripherals.read(&cpu.interrupts, cpu.regs.bc()) == 0x0F);
     try expect(cpu.regs.zf() == false);
     try expect(cpu.regs.nf() == true);
     try expect(cpu.regs.hf() == true);
@@ -681,12 +681,12 @@ test "rl" {
     // src=Indirect, 3-cycle (+1 for decode)
     cpu.regs.pc = 0xC000;
     cpu.regs.write_bc(0xC000);
-    peripherals.write(cpu.regs.bc(), 0x80);
+    peripherals.write(&cpu.interrupts, cpu.regs.bc(), 0x80);
     cpu.regs.set_cf(false);
     for (0..3) |_| {
         rl(&cpu, &peripherals, .{ .indirect = .BC });
     }
-    try expect(peripherals.read(cpu.regs.bc()) == 0x00);
+    try expect(peripherals.read(&cpu.interrupts, cpu.regs.bc()) == 0x00);
     try expect(cpu.regs.zf() == true);
     try expect(cpu.regs.nf() == false);
     try expect(cpu.regs.hf() == false);
@@ -713,7 +713,7 @@ test "bit" {
     // src=Indirect, 2-cycle (+1 for decode)
     cpu.regs.pc = 0xC000;
     cpu.regs.write_bc(0xC000);
-    peripherals.write(cpu.regs.bc(), 0x40);
+    peripherals.write(&cpu.interrupts, cpu.regs.bc(), 0x40);
     for (0..2) |_| {
         bit(&cpu, &peripherals, 7, .{ .indirect = .BC });
     }
@@ -736,8 +736,8 @@ test "push" {
         push(&cpu, &peripherals, .{ .reg16 = .BC });
     }
     try expect(cpu.regs.sp == 0xC100 - 2);
-    try expect(peripherals.read(cpu.regs.sp + 0) == 0x34);
-    try expect(peripherals.read(cpu.regs.sp + 1) == 0x12);
+    try expect(peripherals.read(&cpu.interrupts, cpu.regs.sp + 0) == 0x34);
+    try expect(peripherals.read(&cpu.interrupts, cpu.regs.sp + 1) == 0x12);
     try expect(cpu.regs.pc == 0xC001);
 }
 
@@ -748,8 +748,8 @@ test "pop" {
     // dst=Reg16, 3-cycle
     cpu.regs.pc = 0xC000;
     cpu.regs.sp = 0xC100;
-    peripherals.write(cpu.regs.sp + 0, 0x34);
-    peripherals.write(cpu.regs.sp + 1, 0x12);
+    peripherals.write(&cpu.interrupts, cpu.regs.sp + 0, 0x34);
+    peripherals.write(&cpu.interrupts, cpu.regs.sp + 1, 0x12);
     for (0..3) |_| {
         pop(&cpu, &peripherals, .{ .reg16 = .BC });
     }
@@ -764,7 +764,7 @@ test "jr" {
 
     // 3-cycle
     cpu.regs.pc = 0xC000;
-    peripherals.write(cpu.regs.pc, 0x23);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc, 0x23);
     for (0..3) |_| {
         jr(&cpu, &peripherals);
     }
@@ -778,7 +778,7 @@ test "jrc" {
     // 3-cycle if condition is met
     cpu.regs.pc = 0xC000;
     cpu.regs.set_zf(false);
-    peripherals.write(cpu.regs.pc, 0x23);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc, 0x23);
     for (0..3) |_| {
         jrc(&cpu, &peripherals, .NZ);
     }
@@ -787,7 +787,7 @@ test "jrc" {
     // 2-cycle if condition is not met
     cpu.regs.pc = 0xC000;
     cpu.regs.set_zf(false);
-    peripherals.write(cpu.regs.pc, 0x23);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc, 0x23);
     for (0..2) |_| {
         jrc(&cpu, &peripherals, .Z);
     }
@@ -801,14 +801,14 @@ test "call" {
     // 6-cycle
     cpu.regs.pc = 0xC000;
     cpu.regs.sp = 0xC100;
-    peripherals.write(cpu.regs.pc, 0x30);
-    peripherals.write(cpu.regs.pc + 1, 0xC0);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc, 0x30);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc + 1, 0xC0);
     for (0..6) |_| {
         call(&cpu, &peripherals);
     }
     try expect(cpu.regs.sp == 0xC100 - 2);
-    try expect(peripherals.read(cpu.regs.sp + 0) == 0x02); // +2 for Imm16. Is it right? TODO
-    try expect(peripherals.read(cpu.regs.sp + 1) == 0xC0);
+    try expect(peripherals.read(&cpu.interrupts, cpu.regs.sp + 0) == 0x02); // +2 for Imm16. Is it right? TODO
+    try expect(peripherals.read(&cpu.interrupts, cpu.regs.sp + 1) == 0xC0);
     try expect(cpu.regs.pc == 0xC030 + 1); // +1 for fetch. Is it right? TODO
 }
 
@@ -819,8 +819,8 @@ test "ret" {
     // 4-cycle
     cpu.regs.pc = 0xC000;
     cpu.regs.sp = 0xC100;
-    peripherals.write(cpu.regs.sp + 0, 0x30);
-    peripherals.write(cpu.regs.sp + 1, 0xC0);
+    peripherals.write(&cpu.interrupts, cpu.regs.sp + 0, 0x30);
+    peripherals.write(&cpu.interrupts, cpu.regs.sp + 1, 0xC0);
     for (0..4) |_| {
         ret(&cpu, &peripherals);
     }
@@ -835,8 +835,8 @@ test "reti" {
     // 4-cycle
     cpu.regs.pc = 0xC000;
     cpu.regs.sp = 0xC100;
-    peripherals.write(cpu.regs.sp + 0, 0x30);
-    peripherals.write(cpu.regs.sp + 1, 0xC0);
+    peripherals.write(&cpu.interrupts, cpu.regs.sp + 0, 0x30);
+    peripherals.write(&cpu.interrupts, cpu.regs.sp + 1, 0xC0);
     try expect(cpu.interrupts.ime == false);
     for (0..4) |_| {
         reti(&cpu, &peripherals);

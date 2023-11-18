@@ -146,7 +146,7 @@ pub const Imm8 = struct {
         };
         return switch (state.step) {
             0 => blk: {
-                state.cache = @as(u8, bus.read(cpu.regs.pc) & 0xFF);
+                state.cache = @as(u8, bus.read(&cpu.interrupts, cpu.regs.pc) & 0xFF);
                 cpu.regs.pc +%= 1;
                 state.step = 1;
                 break :blk null;
@@ -227,19 +227,19 @@ pub const Indirect = enum(u8) {
             switch (state.step) {
                 0 => {
                     state.cache = @as(u8, switch (self) {
-                        .BC => bus.read(cpu.regs.bc()),
-                        .DE => bus.read(cpu.regs.de()),
-                        .HL => bus.read(cpu.regs.hl()),
-                        .CFF => bus.read(0xFF00 | @as(u16, cpu.regs.c)),
+                        .BC => bus.read(&cpu.interrupts, cpu.regs.bc()),
+                        .DE => bus.read(&cpu.interrupts, cpu.regs.de()),
+                        .HL => bus.read(&cpu.interrupts, cpu.regs.hl()),
+                        .CFF => bus.read(&cpu.interrupts, 0xFF00 | @as(u16, cpu.regs.c)),
                         .HLD => inn: {
                             const addr = cpu.regs.hl();
                             cpu.regs.write_hl(addr -% 1);
-                            break :inn bus.read(addr);
+                            break :inn bus.read(&cpu.interrupts, addr);
                         },
                         .HLI => inn: {
                             const addr = cpu.regs.hl();
                             cpu.regs.write_hl(addr +% 1);
-                            break :inn bus.read(addr);
+                            break :inn bus.read(&cpu.interrupts, addr);
                         },
                     });
                     state.step = 1;
@@ -266,19 +266,19 @@ pub const Indirect = enum(u8) {
             switch (state.step) {
                 0 => {
                     switch (self) {
-                        .BC => bus.write(cpu.regs.bc(), val),
-                        .DE => bus.write(cpu.regs.de(), val),
-                        .HL => bus.write(cpu.regs.hl(), val),
-                        .CFF => bus.write(0xFF00 | @as(u16, cpu.regs.c), val),
+                        .BC => bus.write(&cpu.interrupts, cpu.regs.bc(), val),
+                        .DE => bus.write(&cpu.interrupts, cpu.regs.de(), val),
+                        .HL => bus.write(&cpu.interrupts, cpu.regs.hl(), val),
+                        .CFF => bus.write(&cpu.interrupts, 0xFF00 | @as(u16, cpu.regs.c), val),
                         .HLD => {
                             const addr = cpu.regs.hl();
                             cpu.regs.write_hl(addr -% 1);
-                            bus.write(addr, val);
+                            bus.write(&cpu.interrupts, addr, val);
                         },
                         .HLI => {
                             const addr = cpu.regs.hl();
                             cpu.regs.write_hl(addr +% 1);
-                            bus.write(addr, val);
+                            bus.write(&cpu.interrupts, addr, val);
                         },
                     }
                     state.step = 1;
@@ -333,7 +333,7 @@ pub const Direct8 = enum(u8) {
                     return null;
                 },
                 2 => {
-                    state.cache = bus.read(state.cache);
+                    state.cache = bus.read(&cpu.interrupts, state.cache);
                     state.step = 3;
                     return null;
                 },
@@ -380,7 +380,7 @@ pub const Direct8 = enum(u8) {
                     return null;
                 },
                 2 => {
-                    bus.write(state.cache, val);
+                    bus.write(&cpu.interrupts, state.cache, val);
                     state.step = 3;
                     return null;
                 },
@@ -428,12 +428,12 @@ pub const Direct16 = struct {
                     return null;
                 },
                 2 => {
-                    bus.write(state.cache, @intCast(val & 0xFF));
+                    bus.write(&cpu.interrupts, state.cache, @intCast(val & 0xFF));
                     state.step = 3;
                     return null;
                 },
                 3 => {
-                    bus.write(state.cache +% 1, @intCast(val >> 8));
+                    bus.write(&cpu.interrupts, state.cache +% 1, @intCast(val >> 8));
                     state.step = 4;
                     return null;
                 },
@@ -471,8 +471,8 @@ test "imm8" {
     var peripherals = try tutil.t_init_peripherals();
 
     cpu.regs.pc = 0xC000;
-    peripherals.write(cpu.regs.pc, 0x58);
-    peripherals.write(cpu.regs.pc + 1, 0xFF);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc, 0x58);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc + 1, 0xFF);
 
     try expect(Imm8.read(&cpu, &peripherals) == null);
     try expect(Imm8.read(&cpu, &peripherals) == 0x58);
@@ -487,10 +487,10 @@ test "imm16" {
     var peripherals = try tutil.t_init_peripherals();
 
     cpu.regs.pc = 0xC000;
-    peripherals.write(cpu.regs.pc, 0x58);
-    peripherals.write(cpu.regs.pc + 1, 0xFF);
-    peripherals.write(cpu.regs.pc + 2, 0x12);
-    peripherals.write(cpu.regs.pc + 3, 0x34);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc, 0x58);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc + 1, 0xFF);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc + 2, 0x12);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc + 3, 0x34);
 
     try expect(Imm16.read(&cpu, &peripherals) == null);
     try expect(Imm16.read(&cpu, &peripherals) == null);
@@ -509,10 +509,10 @@ test "indirect read" {
     cpu.regs.write_bc(0xC080);
     cpu.regs.write_de(0xC001);
     cpu.regs.write_hl(0xC002);
-    peripherals.write(0xC001, 0xFF);
-    peripherals.write(0xC002, 0x12);
-    peripherals.write(0xC080, 0x58);
-    peripherals.write(0xFF80, 0x25);
+    peripherals.write(&cpu.interrupts, 0xC001, 0xFF);
+    peripherals.write(&cpu.interrupts, 0xC002, 0x12);
+    peripherals.write(&cpu.interrupts, 0xC080, 0x58);
+    peripherals.write(&cpu.interrupts, 0xFF80, 0x25);
 
     try expect(Indirect.BC.read(&cpu, &peripherals) == null);
     try expect(Indirect.BC.read(&cpu, &peripherals) == 0x58);
@@ -545,28 +545,28 @@ test "indirect write" {
 
     try expect(Indirect.BC.write(&cpu, &peripherals, 0x58) == null);
     try expect(Indirect.BC.write(&cpu, &peripherals, 0x58) != null);
-    try expect(peripherals.read(0xC080) == 0x58);
+    try expect(peripherals.read(&cpu.interrupts, 0xC080) == 0x58);
 
     try expect(Indirect.DE.write(&cpu, &peripherals, 0x22) == null);
     try expect(Indirect.DE.write(&cpu, &peripherals, 0x22) != null);
-    try expect(peripherals.read(0xC001) == 0x22);
+    try expect(peripherals.read(&cpu.interrupts, 0xC001) == 0x22);
 
     try expect(Indirect.HL.write(&cpu, &peripherals, 0x19) == null);
     try expect(Indirect.HL.write(&cpu, &peripherals, 0x19) != null);
-    try expect(peripherals.read(0xC002) == 0x19);
+    try expect(peripherals.read(&cpu.interrupts, 0xC002) == 0x19);
 
     try expect(Indirect.CFF.write(&cpu, &peripherals, 0x34) == null);
     try expect(Indirect.CFF.write(&cpu, &peripherals, 0x34) != null);
-    try expect(peripherals.read(0xFF80) == 0x34);
+    try expect(peripherals.read(&cpu.interrupts, 0xFF80) == 0x34);
 
     try expect(Indirect.HLD.write(&cpu, &peripherals, 0x25) == null);
     try expect(Indirect.HLD.write(&cpu, &peripherals, 0x25) != null);
-    try expect(peripherals.read(0xC002) == 0x25);
+    try expect(peripherals.read(&cpu.interrupts, 0xC002) == 0x25);
     try expect(cpu.regs.hl() == 0xC001);
 
     try expect(Indirect.HLI.write(&cpu, &peripherals, 0x99) == null);
     try expect(Indirect.HLI.write(&cpu, &peripherals, 0x99) != null);
-    try expect(peripherals.read(0xC001) == 0x99);
+    try expect(peripherals.read(&cpu.interrupts, 0xC001) == 0x99);
     try expect(cpu.regs.hl() == 0xC002);
 }
 
@@ -576,9 +576,9 @@ test "direct8 IO" {
     var peripherals = try tutil.t_init_peripherals();
 
     cpu.regs.pc = 0xC000;
-    peripherals.write(cpu.regs.pc, 0x80);
-    peripherals.write(cpu.regs.pc + 1, 0xFF);
-    peripherals.write(0xFF80, 0x33);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc, 0x80);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc + 1, 0xFF);
+    peripherals.write(&cpu.interrupts, 0xFF80, 0x33);
 
     try expect(Direct8.D.read(&cpu, &peripherals) == null);
     try expect(Direct8.D.read(&cpu, &peripherals) == null);
@@ -597,14 +597,14 @@ test "direct8 IO" {
     try expect(Direct8.D.write(&cpu, &peripherals, 0x99) == null);
     try expect(Direct8.D.write(&cpu, &peripherals, 0x99) == null);
     try expect(Direct8.D.write(&cpu, &peripherals, 0x99) != null);
-    try expect(peripherals.read(0xFF80) == 0x99);
+    try expect(peripherals.read(&cpu.interrupts, 0xFF80) == 0x99);
     try expect(cpu.regs.pc == 0xC002);
 
     cpu.regs.pc = 0xC000;
     try expect(Direct8.DFF.write(&cpu, &peripherals, 0x99) == null);
     try expect(Direct8.DFF.write(&cpu, &peripherals, 0x99) == null);
     try expect(Direct8.DFF.write(&cpu, &peripherals, 0x99) != null);
-    try expect(peripherals.read(0xFF80) == 0x99);
+    try expect(peripherals.read(&cpu.interrupts, 0xFF80) == 0x99);
     try expect(cpu.regs.pc == 0xC001);
 }
 
@@ -614,18 +614,18 @@ test "direct16" {
     var peripherals = try tutil.t_init_peripherals();
 
     cpu.regs.pc = 0xC000;
-    peripherals.write(cpu.regs.pc, 0x80);
-    peripherals.write(cpu.regs.pc + 1, 0xFF);
-    peripherals.write(cpu.regs.pc + 2, 0x80);
-    peripherals.write(cpu.regs.pc + 3, 0xFF);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc, 0x80);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc + 1, 0xFF);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc + 2, 0x80);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc + 3, 0xFF);
 
     try expect(Direct16.write(&cpu, &peripherals, 0x1234) == null);
     try expect(Direct16.write(&cpu, &peripherals, 0x1234) == null);
     try expect(Direct16.write(&cpu, &peripherals, 0x1234) == null);
     try expect(Direct16.write(&cpu, &peripherals, 0x1234) == null);
     try expect(Direct16.write(&cpu, &peripherals, 0x1234) != null);
-    try expect(peripherals.read(0xFF80) == 0x34);
-    try expect(peripherals.read(0xFF81) == 0x12);
+    try expect(peripherals.read(&cpu.interrupts, 0xFF80) == 0x34);
+    try expect(peripherals.read(&cpu.interrupts, 0xFF81) == 0x12);
     try expect(cpu.regs.pc == 0xC002);
 
     try expect(Direct16.write(&cpu, &peripherals, 0x5678) == null);
@@ -633,8 +633,8 @@ test "direct16" {
     try expect(Direct16.write(&cpu, &peripherals, 0x5678) == null);
     try expect(Direct16.write(&cpu, &peripherals, 0x5678) == null);
     try expect(Direct16.write(&cpu, &peripherals, 0x5678) != null);
-    try expect(peripherals.read(0xFF80) == 0x78);
-    try expect(peripherals.read(0xFF81) == 0x56);
+    try expect(peripherals.read(&cpu.interrupts, 0xFF80) == 0x78);
+    try expect(peripherals.read(&cpu.interrupts, 0xFF81) == 0x56);
     try expect(cpu.regs.pc == 0xC004);
 }
 

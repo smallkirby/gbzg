@@ -36,7 +36,7 @@ pub const Cpu = struct {
 
     /// Fetch the next opcode and increment the PC
     pub fn fetch(self: *@This(), bus: *Peripherals) void {
-        self.ctx.opcode = bus.read(self.regs.pc);
+        self.ctx.opcode = bus.read(&self.interrupts, self.regs.pc);
         self.regs.pc +%= 1;
         self.ctx.cb = false;
     }
