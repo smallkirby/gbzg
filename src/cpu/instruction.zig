@@ -1,5 +1,20 @@
 //! This file defines the instruction set of CPU.
 //! Note that all the instruction consumes at least 1-cycle to fetch the next instruction.
+//!
+//! ** Important Notice **
+//!
+//! Functions in this file uses static local variables to keep the state of the instruction among cycles.
+//! These states are shared between all instance of CPU
+//! because `fn func(self: @This())` is just a syntax sugar and namespaced,
+//! not tied to the instance of the struct.
+//! Therefore, if you call these functions before some instruction is finished,
+//! the state of the instruction will be overwritten and the instruction will be broken.
+//! As a design of this emulator,
+//! it is ensured that the instruction finises before other instruction is called
+//! including interrupts.
+//! You must be carefull when you call these functions in tests.
+//! You must finish the instruction before finishing the test case,
+//! or other test cases will be broken.
 
 const Cpu = @import("cpu.zig").Cpu;
 const Registers = @import("register.zig").Registers;

@@ -1,6 +1,21 @@
 //! This file defines available operands of instructions.
 //! Memory access consumes M-cycles.
 //! If the IO does not complete in a 1 M-cycle, IO function returns null.
+//!
+//! ** Important Notice **
+//!
+//! Functions in this file uses static local variables to keep the state of the instruction among cycles.
+//! These states are shared between all instance of CPU
+//! because `fn func(self: @This())` is just a syntax sugar and namespaced,
+//! not tied to the instance of the struct.
+//! Therefore, if you call these functions before some instruction is finished,
+//! the state of the instruction will be overwritten and the instruction will be broken.
+//! As a design of this emulator,
+//! it is ensured that the instruction finises before other instruction is called
+//! including interrupts.
+//! You must be carefull when you call these functions in tests.
+//! You must finish the instruction before finishing the test case,
+//! or other test cases will be broken.
 
 const Peripherals = @import("../peripherals.zig").Peripherals;
 const Cpu = @import("cpu.zig").Cpu;
