@@ -648,6 +648,19 @@ pub fn rrca(cpu: *Cpu, bus: *Peripherals) void {
     cpu.fetch(bus);
 }
 
+/// Rotate A-register right through C-flag, then set flags according to the result.
+pub fn rra(cpu: *Cpu, bus: *Peripherals) void {
+    const c = @as(u8, @intFromBool(cpu.regs.cf()));
+    const res = (cpu.regs.a >> 1) | (@as(u8, c) << 7);
+    cpu.regs.set_zf(false); // unconditional
+    cpu.regs.set_nf(false); // unconditional
+    cpu.regs.set_hf(false); // unconditional
+    cpu.regs.set_cf((cpu.regs.a & 0x01) != 0);
+    cpu.regs.a = res;
+
+    cpu.fetch(bus);
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -1631,6 +1644,37 @@ test "rrca" {
     cpu.regs.a = 0b0000_0010;
     for (0..1) |_| {
         rrca(&cpu, &peripherals);
+    }
+    try expect(cpu.regs.a == 0b0000_0001);
+    try expect(cpu.regs.zf() == false);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.hf() == false);
+    try expect(cpu.regs.cf() == false);
+}
+
+test "rra" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // 1-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.a = 0b0000_0011;
+    cpu.regs.set_cf(true);
+    for (0..1) |_| {
+        rra(&cpu, &peripherals);
+    }
+    try expect(cpu.regs.a == 0b1000_0001);
+    try expect(cpu.regs.zf() == false);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.hf() == false);
+    try expect(cpu.regs.cf() == true);
+    try expect(cpu.regs.pc == 0xC001);
+
+    cpu.regs.pc = 0xC000;
+    cpu.regs.a = 0b0000_0010;
+    cpu.regs.set_cf(false);
+    for (0..1) |_| {
+        rra(&cpu, &peripherals);
     }
     try expect(cpu.regs.a == 0b0000_0001);
     try expect(cpu.regs.zf() == false);
