@@ -1114,6 +1114,24 @@ pub fn swap(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
     }
 }
 
+/// Flip C-flag, then set flags according to the result.
+pub fn ccf(cpu: *Cpu, bus: *Peripherals) void {
+    cpu.regs.set_nf(false); // unconditional
+    cpu.regs.set_hf(false); // unconditional
+    cpu.regs.set_cf(!cpu.regs.cf());
+
+    cpu.fetch(bus);
+}
+
+/// Set C-flag, then set flags according to the result.
+pub fn scf(cpu: *Cpu, bus: *Peripherals) void {
+    cpu.regs.set_nf(false); // unconditional
+    cpu.regs.set_hf(false); // unconditional
+    cpu.regs.set_cf(true);
+
+    cpu.fetch(bus);
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -2587,6 +2605,37 @@ test "swap" {
         swap(&cpu, &peripherals, .{ .indirect = .BC });
     }
     try expect(peripherals.read(&cpu.interrupts, cpu.regs.bc()) == 0b0011_1100);
+    try expect(cpu.regs.pc == 0xC001);
+}
+
+test "ccf / scf" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // 1-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.set_cf(false);
+    cpu.regs.set_zf(false);
+    for (0..1) |_| {
+        ccf(&cpu, &peripherals);
+    }
+    try expect(cpu.regs.cf() == true);
+    try expect(cpu.regs.zf() == false);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.hf() == false);
+    try expect(cpu.regs.pc == 0xC001);
+
+    // 1-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.set_cf(false);
+    cpu.regs.set_zf(true);
+    for (0..1) |_| {
+        scf(&cpu, &peripherals);
+    }
+    try expect(cpu.regs.cf() == true);
+    try expect(cpu.regs.zf() == true);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.hf() == false);
     try expect(cpu.regs.pc == 0xC001);
 }
 
