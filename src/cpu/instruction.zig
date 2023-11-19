@@ -1164,6 +1164,27 @@ pub fn cpl(cpu: *Cpu, bus: *Peripherals) void {
     cpu.fetch(bus);
 }
 
+/// Move 16-bit value of HL register to SP register.
+/// Consumes additional 1 cycle.
+pub fn ld_sphl(cpu: *Cpu, bus: *Peripherals) void {
+    const state = struct {
+        var step: usize = 0;
+    };
+    switch (state.step) {
+        0 => {
+            cpu.regs.sp = cpu.regs.hl();
+            state.step = 1;
+            return;
+        },
+        1 => {
+            state.step = 0;
+            cpu.fetch(bus);
+            return;
+        },
+        else => unreachable,
+    }
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -2721,6 +2742,20 @@ test "cpl" {
         cpl(&cpu, &peripherals);
     }
     try expect(cpu.regs.a == 0b0111_1100);
+    try expect(cpu.regs.pc == 0xC001);
+}
+
+test "ld_sphl" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // 2-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.write_hl(0x1234);
+    for (0..2) |_| {
+        ld_sphl(&cpu, &peripherals);
+    }
+    try expect(cpu.regs.sp == 0x1234);
     try expect(cpu.regs.pc == 0xC001);
 }
 

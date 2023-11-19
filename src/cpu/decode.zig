@@ -235,7 +235,7 @@ pub fn decode(cpu: *Cpu, bus: *Peripherals) void {
         0xC9 => inst.ret(cpu, bus),
         0xD9 => inst.reti(cpu, bus),
         0xE9 => inst.jphl(cpu, bus),
-        0xF9 => unreachable,
+        0xF9 => inst.ld_sphl(Cpu, bus),
         0xCA => inst.jpc(cpu, bus, .Z),
         0xDA => inst.jpc(cpu, bus, .C),
         0xEA => inst.ld(cpu, bus, .{ .direct8 = .D }, .{ .reg8 = .A }),
