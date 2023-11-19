@@ -1268,7 +1268,7 @@ pub fn add_sp(cpu: *Cpu, bus: *Peripherals) void {
     }
 }
 
-pub fn unimplemented_inst(cpu: *Cpu, bus: *Peripherals) void {
+pub fn unimplemented_inst(cpu: *Cpu, _: *Peripherals) void {
     std.log.err("unimplemented instruction: PC={X:0>2}, OP={X:0>2}", .{ cpu.regs.pc, cpu.ctx.opcode });
     unreachable;
 }
