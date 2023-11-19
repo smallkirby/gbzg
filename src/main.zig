@@ -6,6 +6,9 @@ const Cartridge = @import("cartridge.zig").Cartridge;
 const std = @import("std");
 const Options = @import("gbzg.zig").Options;
 const gbzg = @import("gbzg.zig");
+const c = @cImport({
+    @cInclude("signal.h");
+});
 
 fn read_bootrom(path: [:0]const u8) ![256]u8 {
     var f = try std.fs.cwd().openFile(path, .{});
@@ -56,7 +59,28 @@ fn parse_args() !Options {
     return options;
 }
 
-pub fn start(options: Options) !void {
+fn set_signal_handler(f: *const fn (c_int) callconv(.C) void) !void {
+    const signals = [_]c_int{
+        c.SIGINT,
+        c.SIGTERM,
+    };
+    for (signals) |sig| {
+        if (c.signal(sig, f) == c.SIG_ERR) {
+            std.log.err("Failed to set signal handler of : 0x{X}\n", .{sig});
+            return error.Unreachable;
+        }
+    }
+}
+
+var saved_gb: ?*GameBoy = null;
+
+fn signal_handler(sig: c_int) callconv(.C) void {
+    saved_gb.?.deinit() catch unreachable;
+    std.log.info("Received signal: 0x{X}\n", .{sig});
+    std.os.exit(1);
+}
+
+fn start(options: Options) !void {
     // Setup BootROM
     var bootrom_bytes = try read_bootrom(options.bootrom_path.?);
     const bootrom = Bootrom.new(&bootrom_bytes);
@@ -75,8 +99,12 @@ pub fn start(options: Options) !void {
         .sixel = sixel,
     };
 
+    // Setup signal handler
+    try set_signal_handler(signal_handler);
+
     // Initialize GameBoy
     var gb = try GameBoy.new(bootrom, cartridge, r, options);
+    saved_gb = &gb;
     defer {
         gb.deinit() catch unreachable;
     }
