@@ -1,5 +1,7 @@
 const std = @import("std");
 const gbzg = @import("gbzg.zig");
+const Interrupts = @import("interrupts.zig").Interrupts;
+const IEB = Interrupts.InterruptsEnableBits;
 const LCD_INFO = gbzg.LCD_INFO;
 
 /// Mode of Picture Processing Unit
@@ -289,7 +291,7 @@ pub const Ppu = struct {
     /// LCD is 100x144 pixel, while Tile Map has 256x256 pixel.
     /// Therefore, this function renders 160x144 pixels of Tile Map decided by SCX and SCY.
     /// TODO: function name should be changed to `render_bg_line` ?
-    fn render_bg(self: *@This()) void {
+    fn render_bg(self: *@This(), bg_prio: *[LCD_INFO.width]bool) void {
         if (self.lcdc & BG_WINDOW_ENABLE == 0) {
             return;
         }
@@ -315,6 +317,8 @@ pub const Ppu = struct {
                 3 => COLOR.BLACK,
                 else => unreachable,
             };
+
+            bg_prio[i] = pixel != 0;
         }
     }
 
@@ -323,7 +327,7 @@ pub const Ppu = struct {
     /// - Window is rendered at (wx - 7, wy) position. (while bg at (0,0))
     /// - Window fetches data from (0, 0) of 256x256 TileMap (while bg from (scx, scy))
     /// - Window is rendered on the top of bg.
-    fn render_window(self: *@This()) void {
+    fn render_window(self: *@This(), bg_info: *[LCD_INFO.width]bool) void {
         if (self.lcdc & BG_WINDOW_ENABLE == 0 or self.lcdc & WINDOW_ENABLE == 0 or self.wy > self.ly) {
             return;
         }
@@ -356,13 +360,15 @@ pub const Ppu = struct {
                 3 => COLOR.BLACK,
                 else => unreachable,
             };
+
+            bg_info[i] = pixel != 0;
         }
 
         self.wly += wly_add;
     }
 
     /// Render sprites.
-    fn render_sprite(self: *@This(), bg_prio: [LCD_INFO.width]bool) void {
+    fn render_sprite(self: *@This(), bg_prio: *[LCD_INFO.width]bool) void {
         if (self.lcdc & SPRITE_ENABLE == 0) {
             return;
         }
@@ -435,15 +441,18 @@ pub const Ppu = struct {
     fn render(self: *@This()) void {
         var bg_prio = [_]bool{false} ** LCD_INFO.width;
 
-        self.render_bg();
-        self.render_window();
-        self.render_sprite(bg_prio);
+        self.render_bg(&bg_prio);
+        self.render_window(&bg_prio);
+        self.render_sprite(&bg_prio);
     }
 
     /// TODO
-    fn check_lyc_eq_ly(self: *@This()) void {
+    fn check_lyc_eq_ly(self: *@This(), intrs: *Interrupts) void {
         if (self.ly == self.lyc) {
             self.stat |= LYC_EQ_LY;
+            if (self.stat & LYC_EQ_LY_INT != 0) {
+                intrs.irq(@intFromEnum(IEB.STAT));
+            }
         } else {
             self.stat &= ~LYC_EQ_LY;
         }
@@ -451,7 +460,7 @@ pub const Ppu = struct {
 
     /// Emulate single M-cycle.
     /// Return true if VBlank is emitted.
-    pub fn emulate_cycle(self: *@This()) bool {
+    pub fn emulate_cycle(self: *@This(), intrs: *Interrupts) bool {
         if (self.lcdc & PPU_ENABLE == 0) {
             return false;
         }
@@ -467,12 +476,19 @@ pub const Ppu = struct {
                 if (self.ly < LCD_INFO.height) {
                     self.mode = .OamScan;
                     self.cycles = 20;
+                    if (self.stat & OAM_SCAN_INT != 0) {
+                        intrs.irq(@intFromEnum(IEB.STAT));
+                    }
                 } else {
                     self.mode = .VBlank;
                     self.cycles = 114;
+                    intrs.irq(@intFromEnum(IEB.VBLANK));
+                    if (self.stat & VBLANK_INT != 0) {
+                        intrs.irq(@intFromEnum(IEB.STAT));
+                    }
                 }
                 // we need to check LYC=LY coincidence every time we change LY
-                self.check_lyc_eq_ly();
+                self.check_lyc_eq_ly(intrs);
                 break :blk false;
             },
             .VBlank => blk: {
@@ -482,13 +498,17 @@ pub const Ppu = struct {
                 if (self.ly == (LCD_INFO.height + 10)) {
                     vblank = true;
                     self.ly = 0;
+                    self.wly = 0;
                     self.mode = .OamScan;
                     self.cycles = 20;
+                    if (self.stat & OAM_SCAN_INT != 0) {
+                        intrs.irq(@intFromEnum(IEB.STAT));
+                    }
                 } else {
                     self.cycles = 114;
                 }
                 // we need to check LYC=LY coincidence every time we change LY
-                self.check_lyc_eq_ly();
+                self.check_lyc_eq_ly(intrs);
                 break :blk vblank;
             },
             .OamScan => blk: {
@@ -500,6 +520,9 @@ pub const Ppu = struct {
                 self.render();
                 self.mode = .HBlank;
                 self.cycles = 51;
+                if (self.stat & HBLANK_INT != 0) {
+                    intrs.irq(@intFromEnum(IEB.STAT));
+                }
                 break :blk false;
             },
         };
@@ -623,7 +646,8 @@ test "render_bg" {
     // TileMap[0~20(160/8)] is used.
     // Therefore, TileData[0~20] is used
     // (now, Tile Index in TileData[0] is straight mapped)
-    ppu.render_bg();
+    var bg_prio = [_]bool{false} ** LCD_INFO.width;
+    ppu.render_bg(&bg_prio);
 
     for (0..LCD_INFO.width / 8) |i| {
         try expect(ppu.buffer[0 + i * 8] == C.BLACK);

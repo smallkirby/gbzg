@@ -87,7 +87,7 @@ pub const GameBoy = struct {
 
                 self.cpu.emulate_cycle(&self.peripherals);
                 self.peripherals.timer.emulate_cycle(&self.cpu.interrupts);
-                if (self.peripherals.ppu.emulate_cycle()) {
+                if (self.peripherals.ppu.emulate_cycle(&self.cpu.interrupts)) {
                     try self.lcd.draw(self.peripherals.ppu.buffer);
                 }
 
