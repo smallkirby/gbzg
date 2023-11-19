@@ -68,7 +68,7 @@ pub fn decode(cpu: *Cpu, bus: *Peripherals) void {
         0x3E => inst.ld(cpu, bus, .{ .reg8 = .A }, .{ .imm8 = .{} }),
         0x0F => inst.rrca(cpu, bus),
         0x1F => inst.rra(cpu, bus),
-        0x2F => unreachable,
+        0x2F => inst.cpl(cpu, bus),
         0x3F => inst.ccf(cpu, bus),
         0x40 => inst.ld(cpu, bus, .{ .reg8 = .B }, .{ .reg8 = .B }),
         0x50 => inst.ld(cpu, bus, .{ .reg8 = .D }, .{ .reg8 = .B }),

@@ -1155,6 +1155,15 @@ pub fn daa(cpu: *Cpu, bus: *Peripherals) void {
     cpu.fetch(bus);
 }
 
+/// Flip all bits of A-register.
+pub fn cpl(cpu: *Cpu, bus: *Peripherals) void {
+    cpu.regs.a = ~cpu.regs.a;
+    cpu.regs.set_nf(true); // unconditional
+    cpu.regs.set_hf(true); // unconditional
+
+    cpu.fetch(bus);
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -2699,6 +2708,20 @@ test "daa" {
     cpu.regs.set_hf(false);
     daa(&cpu, &peripherals);
     try expect(cpu.regs.a == 0x20);
+}
+
+test "cpl" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // 1-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.a = 0b1000_0011;
+    for (0..1) |_| {
+        cpl(&cpu, &peripherals);
+    }
+    try expect(cpu.regs.a == 0b0111_1100);
+    try expect(cpu.regs.pc == 0xC001);
 }
 
 const expect = @import("std").testing.expect;
