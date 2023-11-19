@@ -5,10 +5,11 @@ Forked from [gb-emu](https://github.com/take44444/gb-emu).
 ![Lint](https://github.com/smallkirby/gbzg/actions/workflows/zig-fmt.yml/badge.svg)
 ![Test](https://github.com/smallkirby/gbzg/actions/workflows/test.yml/badge.svg)
 ![BootROM](https://github.com/smallkirby/gbzg/actions/workflows/boot.yml/badge.svg)
+![cpu_instrs](https://github.com/smallkirby/gbzg/actions/workflows/cpu_instrs.yml/badge.svg)
 
-| <img src="docs/boot.gif" width="400" > |
-|:--:|
-| *Boot [Free ROM](https://github.com/take44444/Gameboy-free_bootrom)* |
+| <img src="docs/boot.gif" width="400" > | <img src="docs/cpu_instrs.png" width="400" > |
+|:--:|:--:|
+| *Boot [Free ROM](https://github.com/take44444/Gameboy-free_bootrom)* | [Blargg cpu_instrs](https://github.com/retrio/gb-test-roms/tree/master/cpu_instrs) test |
 
 ## Build
 
