@@ -527,7 +527,7 @@ pub fn adc(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
         cpu.regs.set_zf(res == 0);
         cpu.regs.set_nf(false); // unconditional
         cpu.regs.set_hf((cpu.regs.a & 0x0F) + (u & 0x0F) + c > 0x0F);
-        cpu.regs.set_cf(res < cpu.regs.a or res < u);
+        cpu.regs.set_cf(@as(u16, cpu.regs.a) + @as(u16, u) + @as(u16, c) > 0xFF);
         cpu.regs.a = res;
 
         cpu.fetch(bus);
