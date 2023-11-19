@@ -1066,6 +1066,15 @@ pub fn retc(cpu: *Cpu, bus: *Peripherals, c: Cond) void {
     }
 }
 
+/// CALL to addr.
+/// Consumes additional 1 cycle.
+pub fn rst(cpu: *Cpu, bus: *Peripherals, addr: u8) void {
+    if (push16(cpu, bus, cpu.regs.pc)) |_| {
+        cpu.regs.pc = @as(u16, addr);
+        cpu.fetch(bus);
+    }
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -2502,6 +2511,20 @@ test "retc" {
     }
     try expect(cpu.regs.pc == 0xC000 + 1); // +1 for fetch
     try expect(cpu.regs.sp == 0xFFF0); // no pop
+}
+
+test "rst" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // 4-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.sp = 0xFFF0;
+    for (0..4) |_| {
+        rst(&cpu, &peripherals, 0x08);
+    }
+    try expect(cpu.regs.pc == 0x0008 + 1); // +1 for fetch
+    try expect(cpu.regs.sp == 0xFFF0 - 2); // -2 for push
 }
 
 const expect = @import("std").testing.expect;
