@@ -77,6 +77,7 @@ var saved_gb: ?*GameBoy = null;
 fn signal_handler(sig: c_int) callconv(.C) void {
     saved_gb.?.deinit() catch unreachable;
     std.log.info("Received signal: 0x{X}\n", .{sig});
+    saved_gb.?.cpu.debug_print_regs();
     std.os.exit(1);
 }
 

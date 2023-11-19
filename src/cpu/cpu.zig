@@ -103,7 +103,7 @@ pub const Cpu = struct {
         }
     }
 
-    fn debug_print_regs(self: @This()) void {
+    pub fn debug_print_regs(self: @This()) void {
         const print = @import("std").debug.print;
         print("PC={X:0>4} OP={X:0>2} ", .{ self.regs.pc, self.ctx.opcode });
         print("A={X:0>2} F={X:0>2} ", .{ self.regs.a, self.regs.f });
