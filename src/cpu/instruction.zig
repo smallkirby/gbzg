@@ -1185,6 +1185,33 @@ pub fn ld_sphl(cpu: *Cpu, bus: *Peripherals) void {
     }
 }
 
+/// Move 8-bit value of SP + Imm8 to HL register, then set flags according to the result.
+/// Consumes additional 1 cycle.
+pub fn ld_hlsp(cpu: *Cpu, bus: *Peripherals) void {
+    const state = struct {
+        var step: usize = 0;
+    };
+    switch (state.step) {
+        0 => if (@as(Operand, .{ .imm8 = .{} }).read(cpu, bus)) |v| {
+            const v8: u8 = @truncate(v);
+            const vi8: i8 = @as(i8, @bitCast(v8));
+            const u = @as(u16, @intCast(vi8));
+            state.step = 1;
+
+            cpu.regs.set_zf(false); // unconditional
+            cpu.regs.set_nf(false); // unconditional
+            cpu.regs.set_hf((cpu.regs.sp & 0x0F) + (u & 0x0F) > 0x0F);
+            cpu.regs.set_cf((cpu.regs.sp & 0xFF) + (u & 0xFF) > 0xFF);
+            cpu.regs.write_hl(cpu.regs.sp +% u);
+        },
+        1 => {
+            state.step = 0;
+            cpu.fetch(bus);
+        },
+        else => unreachable,
+    }
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -2757,6 +2784,22 @@ test "ld_sphl" {
     }
     try expect(cpu.regs.sp == 0x1234);
     try expect(cpu.regs.pc == 0xC001);
+}
+
+test "ld_hlsp" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // 3-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.sp = 0x1234;
+    cpu.regs.write_hl(0x1000);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc, 0x34);
+    for (0..3) |_| {
+        ld_hlsp(&cpu, &peripherals);
+    }
+    try expect(cpu.regs.hl() == 0x34 + 0x1234);
+    try expect(cpu.regs.pc == 0xC002);
 }
 
 const expect = @import("std").testing.expect;
