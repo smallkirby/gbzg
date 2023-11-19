@@ -171,8 +171,27 @@ pub const CartridgeHeader = extern struct {
 
         if (sum != self.header_checksum) {
             std.log.err("Header checksum mismatch: expected {}, got {}", .{ self.header_checksum, sum });
+            self.debug_dump();
             unreachable;
         }
+    }
+
+    fn debug_dump(self: @This()) void {
+        std.log.debug("CartridgeHeader:", .{});
+        std.log.debug("entry_point: 0x{X}", .{self.entry_point});
+        std.log.debug("title: {s}", .{self.title});
+        std.log.debug("maker: {s}", .{self.maker});
+        std.log.debug("cgb_flag: 0x{X}", .{self.cgb_flag});
+        std.log.debug("new_license: 0x{X}", .{self.new_license});
+        std.log.debug("sgb_flag: 0x{X}", .{self.sgb_flag});
+        std.log.debug("cartridge_type: 0x{!}", .{self.cartridge_type});
+        std.log.debug("raw_rom_size: 0x{X}", .{self.raw_rom_size});
+        std.log.debug("raw_sram_size: 0x{!}", .{self.raw_sram_size});
+        std.log.debug("destination: 0x{X}", .{self.destination});
+        std.log.debug("old_license: 0x{X}", .{self.old_license});
+        std.log.debug("game_version: 0x{X}", .{self.game_version});
+        std.log.debug("header_checksum: 0x{X}", .{self.header_checksum});
+        std.log.debug("global_checksum: 0x{X}", .{self.global_checksum});
     }
 
     fn debug_new() @This() {
