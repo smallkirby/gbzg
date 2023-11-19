@@ -6,6 +6,7 @@ Forked from [gb-emu](https://github.com/take44444/gb-emu).
 ![Test](https://github.com/smallkirby/gbzg/actions/workflows/test.yml/badge.svg)
 ![BootROM](https://github.com/smallkirby/gbzg/actions/workflows/boot.yml/badge.svg)
 ![cpu_instrs](https://github.com/smallkirby/gbzg/actions/workflows/cpu_instrs.yml/badge.svg)
+![instr_timing](https://github.com/smallkirby/gbzg/actions/workflows/instr_timing.yml/badge.svg)
 
 | <img src="docs/boot.gif" width="400" > | <img src="docs/cpu_instrs.png" width="400" > |
 |:--:|:--:|
