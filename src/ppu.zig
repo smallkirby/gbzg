@@ -369,14 +369,8 @@ pub const Ppu = struct {
         self.wly += wly_add;
     }
 
-    /// Render sprites.
-    fn render_sprite(self: *@This(), bg_prio: *[LCD_INFO.width]bool) void {
-        if (self.lcdc & SPRITE_ENABLE == 0) {
-            return;
-        }
-
+    fn get_ordered_sprites(self: @This()) [40]Sprite {
         // Get sprites to render
-        const size: usize = if (self.lcdc & SPRITE_SIZE != 0) 16 else 8;
         var sprites_cands = Sprite.from_bytes(self.oam);
         for (0..sprites_cands.len) |i| {
             sprites_cands[i].y -%= 16;
@@ -397,11 +391,22 @@ pub const Ppu = struct {
             Sprite.cmp,
         );
 
+        return orderd_sprites;
+    }
+
+    /// Render sprites.
+    fn render_sprite(self: *@This(), bg_prio: *[LCD_INFO.width]bool) void {
+        if (self.lcdc & SPRITE_ENABLE == 0) {
+            return;
+        }
+        const size: usize = if (self.lcdc & SPRITE_SIZE != 0) 16 else 8;
+        const ordered_sprites = self.get_ordered_sprites();
+
         var rendered: usize = 0;
         var ix: usize = 0;
-        while (rendered < 10 and ix < orderd_sprites.len) : (ix += 1) {
+        while (rendered < 10 and ix < ordered_sprites.len) : (ix += 1) {
             const Flags = Sprite.Flags;
-            const sprite = orderd_sprites[ix];
+            const sprite = ordered_sprites[ix];
             if (self.ly -% sprite.y >= size) {
                 continue;
             }
@@ -697,6 +702,63 @@ test "sprites init" {
     for (sprites) |sprite| {
         try expect(sprite.y == 0xF0);
         try expect(sprite.x == 0xF8);
+    }
+}
+
+test "sprite ordering" {
+    var ppu = try Ppu.new();
+    const sprites = [_]Ppu.Sprite{
+        .{ .y = 0 + 16, .x = 0 + 8, .tile_idx = 0, .flags = 0 },
+        .{ .y = 1 + 16, .x = 1 + 8, .tile_idx = 0, .flags = 0 },
+        .{ .y = 2 + 16, .x = 0 + 8, .tile_idx = 0, .flags = 0 },
+        .{ .y = 3 + 16, .x = 0 + 8, .tile_idx = 0, .flags = 0 },
+        .{ .y = 4 + 16, .x = 3 + 8, .tile_idx = 0, .flags = 0 },
+        .{ .y = 5 + 16, .x = 1 + 8, .tile_idx = 0, .flags = 0 },
+        .{ .y = 6 + 16, .x = 4 + 8, .tile_idx = 0, .flags = 0 },
+        .{ .y = 7 + 16, .x = 0 + 8, .tile_idx = 0, .flags = 0 },
+    } ++ [_]Ppu.Sprite{
+        .{ .y = 0xFF, .x = 0xFF, .tile_idx = 0, .flags = 0 },
+    } ** 32;
+    const sprite_bytes: [40 * 4]u8 = @bitCast(sprites);
+
+    // check if from_bytes works correctly
+    const temp = Ppu.Sprite.from_bytes(sprite_bytes);
+    var ok_from_bytes = true;
+    for (0..sprites.len) |i| {
+        expect(temp[i].y == sprites[i].y) catch {
+            ok_from_bytes = false;
+            std.log.err("i={X}, temp[i].y={X}, sprites[i].y={X}", .{
+                i,
+                temp[i].y,
+                sprites[i].y,
+            });
+        };
+    }
+    try expect(ok_from_bytes);
+
+    // check if sorting works correctly
+    for (0..sprite_bytes.len) |i| {
+        ppu.oam[i] = sprite_bytes[i];
+    }
+    const ordered_sprites = ppu.get_ordered_sprites();
+    const expected_sprites = [_]Ppu.Sprite{
+        .{ .y = 7, .x = 0, .tile_idx = 0, .flags = 0 },
+        .{ .y = 3, .x = 0, .tile_idx = 0, .flags = 0 },
+        .{ .y = 2, .x = 0, .tile_idx = 0, .flags = 0 },
+        .{ .y = 0, .x = 0, .tile_idx = 0, .flags = 0 },
+        .{ .y = 5, .x = 1, .tile_idx = 0, .flags = 0 },
+        .{ .y = 1, .x = 1, .tile_idx = 0, .flags = 0 },
+        .{ .y = 4, .x = 3, .tile_idx = 0, .flags = 0 },
+        .{ .y = 6, .x = 4, .tile_idx = 0, .flags = 0 },
+    };
+    for (0..expected_sprites.len) |i| {
+        expect(ordered_sprites[i].y == expected_sprites[i].y) catch {
+            std.log.err("i={X}, ordered_sprites[i].y={X}, expected_sprites[i].y={X}", .{
+                i,
+                ordered_sprites[i].y,
+                expected_sprites[i].y,
+            });
+        };
     }
 }
 
