@@ -1,3 +1,4 @@
+const std = @import("std");
 const gbzg = @import("gbzg.zig");
 const LCD_INFO = gbzg.LCD_INFO;
 
@@ -69,7 +70,7 @@ pub const Ppu = struct {
     /// VRAM
     vram: []u8,
     /// OAM (Object Attribute Memory)
-    oam: []u8,
+    oam: [OAM_SIZE]u8,
     /// LCD buffer
     buffer: []u8,
 
@@ -91,7 +92,7 @@ pub const Ppu = struct {
     pub const LYC_EQ_LY: u8 = 0b0000_0100;
 
     pub const VRAM_SIZE = 0x2000; // 8KiB
-    pub const OAM_SIZEE = 0xA0; // 160B
+    pub const OAM_SIZE = 0xA0; // 160B
 
     const COLOR = struct {
         pub const WHITE: u8 = 0xFF;
@@ -100,9 +101,44 @@ pub const Ppu = struct {
         pub const BLACK: u8 = 0x00;
     };
 
+    /// Sprite is 4 bytes data representing a 8x8 or 8x16 pixels object.
+    /// OAM contains 40 sprites, while sprite buffer contains 10 sprites.
+    /// Sprite is fetched from OAM in OAM Scan Mode,
+    /// then rendered in Drawing Mode.
+    /// But this emulator renders does them in Drawding Mode.
+    const Sprite = packed struct {
+        /// Y Position of the sprite (subtract 16)
+        y: u8,
+        /// X Position of the sprite (subtract 8)
+        x: u8,
+        /// Tile Index of the sprite
+        tile_idx: u8,
+        /// Attribute of the sprite
+        flags: u8,
+
+        const Flags = struct {
+            /// Palette number of the sprite
+            pub const PALETTE: u8 = 0b0001_0000;
+            /// Flip X
+            pub const FLIP_X: u8 = 0b0010_0000;
+            /// Flip Y
+            pub const FLIP_Y: u8 = 0b0100_0000;
+            /// Priority
+            pub const PRIORITY: u8 = 0b1000_0000;
+        };
+
+        pub fn from_bytes(bytes: [40 * 4]u8) [40]@This() {
+            return @bitCast(bytes);
+        }
+
+        fn cmp(_: void, a: @This(), b: @This()) bool {
+            return a.x < b.x;
+        }
+    };
+
     pub fn new() !@This() {
         const vram = try gbzg.ppu_allocator.alloc([VRAM_SIZE]u8, 1);
-        const oam = try gbzg.ppu_allocator.alloc([OAM_SIZEE]u8, 1);
+        const oam = try gbzg.ppu_allocator.alloc([OAM_SIZE]u8, 1);
         const buffer = try gbzg.ppu_allocator.alloc([LCD_INFO.pixels]u8, 1);
         return .{
             .mode = .OamScan,
@@ -120,7 +156,7 @@ pub const Ppu = struct {
             .wly = 0,
             .cycles = 20,
             .vram = &vram[0],
-            .oam = &oam[0],
+            .oam = oam[0],
             .buffer = &buffer[0],
         };
     }
@@ -325,9 +361,83 @@ pub const Ppu = struct {
         self.wly += wly_add;
     }
 
+    /// Render sprites.
+    fn render_sprite(self: *@This(), bg_prio: [LCD_INFO.width]bool) void {
+        if (self.lcdc & SPRITE_ENABLE == 0) {
+            return;
+        }
+
+        // Get sprites to render
+        const size: usize = if (self.lcdc & SPRITE_SIZE != 0) 16 else 8;
+        var sprites_cands = Sprite.from_bytes(self.oam);
+        for (0..sprites_cands.len) |i| {
+            sprites_cands[i].y -%= 16;
+            sprites_cands[i].x -%= 8;
+        }
+
+        // Sprites in lower addr in OAM has higher priority.
+        var orderd_sprites = sprites_cands;
+        for (sprites_cands, 0..) |sprite, i| {
+            orderd_sprites[sprites_cands.len - (i + 1)] = sprite;
+        }
+
+        // Sprites located left has higher priority.
+        std.sort.block(
+            Sprite,
+            orderd_sprites[0..orderd_sprites.len],
+            {},
+            Sprite.cmp,
+        );
+
+        var rendered: usize = 0;
+        var ix: usize = 0;
+        while (rendered < 10 and ix < orderd_sprites.len) : (ix += 1) {
+            const Flags = Sprite.Flags;
+            const sprite = orderd_sprites[ix];
+            if (self.ly -% sprite.y >= size) {
+                continue;
+            }
+            rendered += 1;
+
+            const palette = if (sprite.flags & Flags.PALETTE != 0) self.obp1 else self.obp0;
+            var tile_idx: usize = @intCast(sprite.tile_idx);
+            var row = if (sprite.flags & Flags.FLIP_Y != 0)
+                size - 1 - (self.ly -% sprite.y)
+            else
+                self.ly -% sprite.y;
+            if (size == 16) tile_idx &= 0xFE;
+            tile_idx += @intFromBool(row >= 8);
+            row &= 7;
+
+            for (0..8) |col| {
+                const col_flipped = if (sprite.flags & Flags.FLIP_X != 0) 7 - col else col;
+                const pixel = self.get_pixel_from_tile(
+                    tile_idx,
+                    @intCast(row),
+                    @intCast(col_flipped),
+                );
+                const i: usize = @intCast(sprite.x +% col);
+                if (i < LCD_INFO.width and pixel > 0) {
+                    if (sprite.flags & Flags.PRIORITY != 0 or !bg_prio[i]) {
+                        self.buffer[@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i] = switch ((palette >> ((@as(u3, pixel) * 2))) & 0b11) {
+                            0 => COLOR.WHITE,
+                            1 => COLOR.LIGHT_GRAY,
+                            2 => COLOR.DARK_GRAY,
+                            3 => COLOR.BLACK,
+                            else => unreachable,
+                        };
+                    }
+                }
+            }
+        }
+    }
+
     fn render(self: *@This()) void {
+        var bg_prio = [_]bool{false} ** LCD_INFO.width;
+
         self.render_bg();
         self.render_window();
+        self.render_sprite(bg_prio);
     }
 
     /// TODO
@@ -524,6 +634,31 @@ test "render_bg" {
         try expect(ppu.buffer[5 + i * 8] == C.BLACK);
         try expect(ppu.buffer[6 + i * 8] == C.BLACK);
         try expect(ppu.buffer[7 + i * 8] == C.WHITE);
+    }
+}
+
+test "sprites init" {
+    try expect(@sizeOf(Ppu.Sprite) == 4);
+
+    var ppu = try Ppu.new();
+    for (0..Ppu.OAM_SIZE) |i| {
+        ppu.oam[i] = 0;
+    }
+    var sprites = Ppu.Sprite.from_bytes(ppu.oam);
+
+    try expect(sprites.len == 40);
+    try expect(sprites[0].y == 0);
+    try expect(sprites[0].x == 0);
+    try expect(sprites[0].tile_idx == 0);
+    try expect(sprites[0].flags == 0);
+
+    for (0..sprites.len) |i| {
+        sprites[i].y -%= 16;
+        sprites[i].x -%= 8;
+    }
+    for (sprites) |sprite| {
+        try expect(sprite.y == 0xF0);
+        try expect(sprite.x == 0xF8);
     }
 }
 
