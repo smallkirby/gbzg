@@ -40,4 +40,4 @@ jobs:
 
       - name: Boot
         run: |
-          zig build run -- --boot-only --no-graphics
+          zig build run -- --boot-only --no-graphics --bootrom=./dmg_bootrom.bin
