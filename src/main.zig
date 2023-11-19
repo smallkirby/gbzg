@@ -50,6 +50,9 @@ fn parse_args() !Options {
             options.cartridge_path = arg["--cart=".len..];
         } else if (std.mem.startsWith(u8, arg, "--bootrom=")) {
             options.bootrom_path = arg["--bootrom=".len..];
+        } else if (std.mem.startsWith(u8, arg, "--exit_at=")) {
+            const s = arg["--exit_at=".len..];
+            options.exit_at = try std.fmt.parseInt(u16, s, 16);
         } else {
             std.log.err("Unknown argument: {s}\n", .{arg});
             return error.Unreachable;

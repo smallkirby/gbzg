@@ -30,6 +30,8 @@ pub const Options = struct {
     bootrom_path: ?[:0]const u8 = null,
     /// Cartridge file path.
     cartridge_path: ?[:0]const u8 = null,
+    /// Exit on PC reaching this address.
+    exit_at: ?u16 = null,
 };
 
 pub const GameBoy = struct {
@@ -71,7 +73,14 @@ pub const GameBoy = struct {
             for (0..@as(usize, @intCast((e - elapsed) / M_CYCLE_NANOS))) |_| {
                 if (self.options.boot_only and self.cpu.regs.pc == 0x78) {
                     // PC=0x78 jumps to 0xFFE and starts executing the cartridge code.
+                    std.log.info("BootROM finished. Exiting...", .{});
                     return;
+                }
+                if (self.options.exit_at) |at| {
+                    if (self.cpu.regs.pc == at) {
+                        std.log.info("Reached at specified PC(=0x{X:0>4}). Exiting...", .{self.cpu.regs.pc});
+                        return;
+                    }
                 }
 
                 self.cpu.emulate_cycle(&self.peripherals);
