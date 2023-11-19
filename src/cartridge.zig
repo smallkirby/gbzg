@@ -9,7 +9,7 @@ pub const Cartridge = struct {
     mbc: Mbc,
 
     pub fn new(rom: []u8) !@This() {
-        const header = CartridgeHeader.from_bytes(rom[0..@sizeOf(CartridgeHeader)].*);
+        const header = CartridgeHeader.from_bytes(rom[0x100..0x150].*);
 
         const title = header.title[0..];
         const rom_size = header.rom_size();
@@ -166,11 +166,11 @@ pub const CartridgeHeader = extern struct {
         var sum: u8 = 0;
         const bytes: [@sizeOf(@This())]u8 = @bitCast(self);
         for (0x34..0x4D) |i| {
-            sum +%= bytes[i];
+            sum -%= bytes[i] +% 1;
         }
 
         if (sum != self.header_checksum) {
-            std.log.err("Header checksum mismatch: expected {}, got {}\n", .{ self.header_checksum, sum });
+            std.log.err("Header checksum mismatch: expected {}, got {}", .{ self.header_checksum, sum });
             unreachable;
         }
     }
