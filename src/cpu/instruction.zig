@@ -991,6 +991,42 @@ pub fn jpc(cpu: *Cpu, bus: *Peripherals, c: Cond) void {
     }
 }
 
+/// Call Imm16 if condition is met.
+/// Consumes 6-cycle if condition is met, otherwise 3-cycle.
+pub fn callc(cpu: *Cpu, bus: *Peripherals, c: Cond) void {
+    const state = struct {
+        var step: usize = 0;
+        var cache: u16 = 0;
+    };
+
+    while (true) {
+        switch (state.step) {
+            0 => blk: {
+                if (@as(Operand, .{ .imm16 = .{} }).read(cpu, bus)) |v| {
+                    state.cache = v;
+                    state.step = 1;
+                    if (cond(cpu, c)) {
+                        break :blk;
+                    } else {
+                        cpu.fetch(bus);
+                    }
+                }
+                return;
+            },
+            1 => {
+                if (push16(cpu, bus, cpu.regs.pc)) |_| {
+                    cpu.regs.pc = state.cache;
+                    state.step = 0;
+                    cpu.fetch(bus);
+                    return;
+                }
+                return;
+            },
+            else => unreachable,
+        }
+    }
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -2371,6 +2407,35 @@ test "jpc" {
         jpc(&cpu, &peripherals, .Z);
     }
     try expect(cpu.regs.pc == 0xC000 + 2 + 1); // +2 for Imm16, +1 for fetch
+}
+
+test "callc" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // src=Imm16, 6-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.sp = 0xFFFE;
+    cpu.regs.set_zf(false);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc, 0x34);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc + 1, 0x12);
+    for (0..6) |_| {
+        callc(&cpu, &peripherals, .NZ);
+    }
+    try expect(cpu.regs.pc == 0x1234 + 1); // +1 for fetch
+    try expect(cpu.regs.sp == 0xFFFE - 2); // -2 for push
+
+    // src=Imm16, 3-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.sp = 0xFFFE;
+    cpu.regs.set_zf(false);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc, 0x34);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc + 1, 0x12);
+    for (0..3) |_| {
+        callc(&cpu, &peripherals, .Z);
+    }
+    try expect(cpu.regs.pc == 0xC000 + 2 + 1); // +2 for Imm16, +1 for fetch
+    try expect(cpu.regs.sp == 0xFFFE); // no push
 }
 
 const expect = @import("std").testing.expect;
