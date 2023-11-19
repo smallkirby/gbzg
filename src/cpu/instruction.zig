@@ -953,6 +953,12 @@ pub fn jp(cpu: *Cpu, bus: *Peripherals) void {
     }
 }
 
+/// Move 16-bit value of HL register to PC.
+pub fn jphl(cpu: *Cpu, bus: *Peripherals) void {
+    cpu.regs.pc = cpu.regs.hl();
+    cpu.fetch(bus);
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -2293,6 +2299,19 @@ test "jp" {
     peripherals.write(&cpu.interrupts, cpu.regs.pc + 1, 0x12);
     for (0..4) |_| {
         jp(&cpu, &peripherals);
+    }
+    try expect(cpu.regs.pc == 0x1234 + 1); // +1 for fetch
+}
+
+test "jphl" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // 1-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.write_hl(0x1234);
+    for (0..1) |_| {
+        jphl(&cpu, &peripherals);
     }
     try expect(cpu.regs.pc == 0x1234 + 1); // +1 for fetch
 }
