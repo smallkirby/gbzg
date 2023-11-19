@@ -39,7 +39,7 @@ pub fn decode(cpu: *Cpu, bus: *Peripherals) void {
         0x36 => inst.ld(cpu, bus, .{ .indirect = .HL }, .{ .imm8 = .{} }),
         0x07 => inst.rlca(cpu, bus),
         0x17 => inst.rla(cpu, bus),
-        0x27 => unreachable,
+        0x27 => inst.daa(cpu, bus),
         0x37 => inst.scf(cpu, bus),
         0x08 => inst.ld(cpu, bus, .{ .direct16 = .{} }, .{ .reg16 = .SP }),
         0x18 => inst.jr(cpu, bus),

@@ -1132,6 +1132,29 @@ pub fn scf(cpu: *Cpu, bus: *Peripherals) void {
     cpu.fetch(bus);
 }
 
+/// Convert A-register to BCD, then set flags according to the result.
+pub fn daa(cpu: *Cpu, bus: *Peripherals) void {
+    var correction: u8 = 0;
+    var cf = false;
+
+    if (cpu.regs.cf() or (!cpu.regs.nf() and cpu.regs.a > 0x99)) {
+        cf = true;
+        correction |= 0x60;
+    }
+    if (cpu.regs.hf() or (!cpu.regs.nf() and (cpu.regs.a & 0x0F) > 0x09)) {
+        correction |= 0x06;
+    }
+    if (cpu.regs.nf()) {
+        cpu.regs.a -%= correction;
+    } else {
+        cpu.regs.a +%= correction;
+    }
+    cpu.regs.set_zf(cpu.regs.a == 0);
+    cpu.regs.set_hf(false);
+    cpu.regs.set_cf(cf);
+    cpu.fetch(bus);
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -2637,6 +2660,45 @@ test "ccf / scf" {
     try expect(cpu.regs.nf() == false);
     try expect(cpu.regs.hf() == false);
     try expect(cpu.regs.pc == 0xC001);
+}
+
+test "daa" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // 1-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.a = 1;
+    cpu.regs.set_cf(false);
+    cpu.regs.set_hf(false);
+    for (0..1) |_| {
+        daa(&cpu, &peripherals);
+    }
+    try expect(cpu.regs.a == 0x01);
+    try expect(cpu.regs.zf() == false);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.cf() == false);
+    try expect(cpu.regs.hf() == false);
+    try expect(cpu.regs.pc == 0xC001);
+
+    cpu.regs.pc = 0xC000;
+    cpu.regs.a = 10;
+    cpu.regs.set_cf(false);
+    cpu.regs.set_hf(false);
+    for (0..1) |_| {
+        daa(&cpu, &peripherals);
+    }
+    try expect(cpu.regs.a == 0x10);
+    try expect(cpu.regs.zf() == false);
+    try expect(cpu.regs.nf() == false);
+    try expect(cpu.regs.cf() == false);
+    try expect(cpu.regs.hf() == false);
+
+    cpu.regs.a = 32;
+    cpu.regs.set_cf(false);
+    cpu.regs.set_hf(false);
+    daa(&cpu, &peripherals);
+    try expect(cpu.regs.a == 0x20);
 }
 
 const expect = @import("std").testing.expect;
