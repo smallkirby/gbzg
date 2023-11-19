@@ -57,6 +57,11 @@ pub const Ppu = struct {
     wy: u8,
     /// Window X Position (address: 0xFF4B)
     wx: u8,
+    /// Window Line Position (internal)
+    /// Rendering of window can be disabled while a rendering of the screen.
+    /// Window's Y position must be incremented only when window is enabled and rendered.
+    /// This internal register is used to keep track of window's Y position.
+    wly: u8,
 
     /// TODO
     cycles: u8,
@@ -112,6 +117,7 @@ pub const Ppu = struct {
             .obp1 = 0,
             .wy = 0,
             .wx = 0,
+            .wly = 0,
             .cycles = 20,
             .vram = &vram[0],
             .oam = &oam[0],
@@ -276,6 +282,54 @@ pub const Ppu = struct {
         }
     }
 
+    /// Render window.
+    /// Rendering of window differs from rendering of bg in the following points:
+    /// - Window is rendered at (wx - 7, wy) position. (while bg at (0,0))
+    /// - Window fetches data from (0, 0) of 256x256 TileMap (while bg from (scx, scy))
+    /// - Window is rendered on the top of bg.
+    fn render_window(self: *@This()) void {
+        if (self.lcdc & BG_WINDOW_ENABLE == 0 or self.lcdc & WINDOW_ENABLE == 0 or self.wy > self.ly) {
+            return;
+        }
+
+        var wly_add: u8 = 0;
+        const y = self.wly;
+        for (0..LCD_INFO.width) |i| {
+            const x_res = @subWithOverflow(@as(u8, @truncate(i)), self.wx -% 7);
+            if (x_res[1] != 0) {
+                continue;
+            }
+            wly_add = 1;
+
+            const tile_idx = self.get_tile_idx_from_tile_map(
+                @intFromBool(self.lcdc & WINDOW_TILE_MAP != 0),
+                y / TileInfo.HEIGHT,
+                x_res[0] / TileInfo.WIDTH,
+            );
+
+            const pixel = self.get_pixel_from_tile(
+                tile_idx,
+                @intCast(y % TileInfo.HEIGHT),
+                @intCast(x_res[0] % TileInfo.WIDTH),
+            );
+
+            self.buffer[@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i] = switch ((self.bgp >> ((@as(u3, pixel) * 2))) & 0b11) {
+                0 => COLOR.WHITE,
+                1 => COLOR.LIGHT_GRAY,
+                2 => COLOR.DARK_GRAY,
+                3 => COLOR.BLACK,
+                else => unreachable,
+            };
+        }
+
+        self.wly += wly_add;
+    }
+
+    fn render(self: *@This()) void {
+        self.render_bg();
+        self.render_window();
+    }
+
     /// TODO
     fn check_lyc_eq_ly(self: *@This()) void {
         if (self.ly == self.lyc) {
@@ -333,7 +387,7 @@ pub const Ppu = struct {
                 break :blk false;
             },
             .Drawing => blk: {
-                self.render_bg();
+                self.render();
                 self.mode = .HBlank;
                 self.cycles = 51;
                 break :blk false;
