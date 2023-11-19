@@ -1212,6 +1212,61 @@ pub fn ld_hlsp(cpu: *Cpu, bus: *Peripherals) void {
     }
 }
 
+/// Add 16bit value of src to HL register, then set flags according to the result.
+/// Consumes additional 1 cycle.
+pub fn add_hl(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
+    const state = struct {
+        var step: usize = 0;
+    };
+    switch (state.step) {
+        0 => {
+            const v = src.read(cpu, bus).?;
+            const res = @addWithOverflow(cpu.regs.hl(), v);
+            cpu.regs.set_nf(false); // unconditional
+            cpu.regs.set_hf((cpu.regs.hl() & 0x0FFF) + (v & 0x0FFF) > 0x0FFF);
+            cpu.regs.set_cf(res[1] != 0);
+            cpu.regs.write_hl(res[0]);
+            state.step = 1;
+        },
+        1 => {
+            state.step = 0;
+            cpu.fetch(bus);
+        },
+        else => unreachable,
+    }
+}
+
+/// Add Imm8 to SP register, then set flags according to the result.
+/// Consumes additional 2 cycle.
+pub fn add_sp(cpu: *Cpu, bus: *Peripherals) void {
+    const state = struct {
+        var step: usize = 0;
+    };
+    switch (state.step) {
+        0 => if (@as(Operand, .{ .imm8 = .{} }).read(cpu, bus)) |v| {
+            const v8: u8 = @truncate(v);
+            const vi8: i8 = @as(i8, @bitCast(v8));
+            const u = @as(u16, @intCast(vi8));
+
+            cpu.regs.set_zf(false); // unconditional
+            cpu.regs.set_nf(false); // unconditional
+            cpu.regs.set_hf((cpu.regs.sp & 0x0F) + (u & 0x0F) > 0x0F);
+            cpu.regs.set_cf((cpu.regs.sp & 0xFF) + (u & 0xFF) > 0xFF);
+            cpu.regs.sp +%= u;
+
+            state.step = 1;
+        },
+        1 => {
+            state.step = 2;
+        },
+        2 => {
+            state.step = 0;
+            cpu.fetch(bus);
+        },
+        else => unreachable,
+    }
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -2800,6 +2855,14 @@ test "ld_hlsp" {
     }
     try expect(cpu.regs.hl() == 0x34 + 0x1234);
     try expect(cpu.regs.pc == 0xC002);
+}
+
+test "add_hl" {
+    // TODO
+}
+
+test "add_sp" {
+    // TODO
 }
 
 const expect = @import("std").testing.expect;
