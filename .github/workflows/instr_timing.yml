@@ -52,6 +52,6 @@ jobs:
               --no-graphics \
               --bootrom=./dmg_bootrom.bin \
               --cart=./instr_timing.gb \
-              --exit_at=6F3 \
+              --exit_at=8B1 \
               --dump_vram=./test.vram
           diff ./test.vram ./tests/assets/instr_timing.vram
