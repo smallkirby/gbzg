@@ -1,0 +1,57 @@
+name: mem_timing2
+
+env:
+  ZIG_VERSION: 0.11.0
+
+on:
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
+
+jobs:
+  test:
+    name: mem_timing2
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install libsixel
+        run: |
+          sudo apt update
+          sudo apt install -y libsixel-dev
+
+      - name: Install zig
+        run: |
+          curl https://ziglang.org/builds/zig-linux-x86_64-${{env.ZIG_VERSION}}.tar.xz -L -o zig.tar.xz
+          tar -xf zig.tar.xz
+          echo "$(pwd)/zig-linux-x86_64-${{env.ZIG_VERSION}}" >> $GITHUB_PATH
+
+      - name: Get Free BootROM
+        run: |
+          curl \
+            https://github.com/take44444/Gameboy-free_bootrom/releases/download/1.0.0/dmg_bootrom.bin \
+            -L \
+            -o dmg_bootrom.bin
+
+      - name: Get Test Cartridge
+        run: |
+          curl \
+            https://raw.githubusercontent.com/retrio/gb-test-roms/master/mem_timing-2/mem_timing.gb \
+            -L \
+            -o mem_timing2.gb
+
+      - name: Run tests
+        run: |
+          timeout 30 \
+            zig build run -- \
+              --no-graphics \
+              --bootrom=./dmg_bootrom.bin \
+              --cart=./mem_timing2.gb \
+              --dump_vram=./test.vram \
+          || true
+          diff ./test.vram ./tests/assets/mem_timing2.vram
