@@ -8,9 +8,13 @@ Forked from [gb-emu](https://github.com/take44444/gb-emu).
 ![cpu_instrs](https://github.com/smallkirby/gbzg/actions/workflows/cpu_instrs.yml/badge.svg)
 ![instr_timing](https://github.com/smallkirby/gbzg/actions/workflows/instr_timing.yml/badge.svg)
 
-| <img src="docs/boot.gif" width="400" > | <img src="docs/cpu_instrs.png" width="400" > |
+| <img src="docs/boot.gif" width="400" > |
+|:--:|
+| *Boot [Free ROM](https://github.com/take44444/Gameboy-free_bootrom)* |
+
+| <img src="docs/cpu_instrs.png" width="300" > | <img src="docs/instr_timing.png" width="300" > |
 |:--:|:--:|
-| *Boot [Free ROM](https://github.com/take44444/Gameboy-free_bootrom)* | [Blargg cpu_instrs](https://github.com/retrio/gb-test-roms/tree/master/cpu_instrs) test |
+| [Blargg cpu_instrs](https://github.com/retrio/gb-test-roms/tree/master/cpu_instrs) test | [Blargg instr_timing](https://github.com/retrio/gb-test-roms/tree/master/instr_timing) test |
 
 ## Build
 
