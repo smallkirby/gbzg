@@ -2,6 +2,7 @@ const Bootrom = @import("bootrom.zig").Bootrom;
 const HRam = @import("hram.zig").HRam;
 const WRam = @import("wram.zig").WRam;
 const Ppu = @import("ppu.zig").Ppu;
+const Timer = @import("timer.zig").Timer;
 const Cartridge = @import("cartridge.zig").Cartridge;
 const CartridgeHeader = @import("cartridge.zig").CartridgeHeader;
 const Interrupts = @import("interrupts.zig").Interrupts;
@@ -13,6 +14,7 @@ pub const Peripherals = struct {
     wram: WRam,
     ppu: Ppu,
     cartridge: Cartridge,
+    timer: Timer,
 
     pub fn new(bootrom: Bootrom, cartridge: Cartridge) !Peripherals {
         return Peripherals{
@@ -21,6 +23,7 @@ pub const Peripherals = struct {
             .wram = try WRam.new(),
             .ppu = try Ppu.new(),
             .cartridge = cartridge,
+            .timer = Timer.new(),
         };
     }
 
@@ -36,6 +39,7 @@ pub const Peripherals = struct {
             0xA000...0xBFFF => self.cartridge.read(addr),
             0xC000...0xDFFF => self.wram.read(addr),
             0xFE00...0xFE9F => self.ppu.read(addr),
+            0xFF04...0xFF07 => self.timer.read(addr),
             0xFF0F => interrupts.read(addr),
             0xFF40...0xFF4B => self.ppu.read(addr),
             0xFF80...0xFFFE => self.hram.read(addr),
@@ -59,6 +63,7 @@ pub const Peripherals = struct {
             0xA000...0xBFFF => self.cartridge.write(addr, val),
             0xC000...0xDFFF => self.wram.write(addr, val),
             0xFE00...0xFE9F => self.ppu.write(addr, val),
+            0xFF04...0xFF07 => self.timer.write(addr, val),
             0xFF0F => interrupts.write(addr, val),
             0xFF40...0xFF4B => self.ppu.write(addr, val),
             0xFF50 => self.bootrom.write(addr, val),
