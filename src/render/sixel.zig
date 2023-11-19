@@ -124,7 +124,7 @@ pub const Sixel = struct {
 
         new_temios = old_termios;
         new_temios.c_lflag &= ~(@as(c_uint, c.BRKINT) | @as(c_uint, c.ICRNL) | @as(c_uint, c.INPCK) | @as(c_uint, c.ISTRIP) | @as(c_uint, c.IXON));
-        new_temios.c_lflag &= ~(@as(c_uint, c.ECHO) | @as(c_uint, c.ICANON) | @as(c_uint, c.IEXTEN) | @as(c_uint, c.ISIG));
+        new_temios.c_lflag &= ~(@as(c_uint, c.ECHO) | @as(c_uint, c.ICANON) | @as(c_uint, c.IEXTEN));
         new_temios.c_cflag &= ~(@as(c_uint, c.CSIZE) | @as(c_uint, c.PARENB));
         new_temios.c_cflag |= @as(c_uint, c.CS8);
         new_temios.c_oflag &= ~(@as(c_uint, c.OPOST));
