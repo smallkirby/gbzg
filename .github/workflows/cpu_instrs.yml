@@ -47,10 +47,11 @@ jobs:
 
       - name: Run tests
         run: |
-          zig build run -- \
-            --no-graphics \
-            --bootrom=./dmg_bootrom.bin \
-            --cart=./cpu_instrs.gb \
-            --exit_at=6F3 \
-            --dump_vram=./test.vram
+          timeout 120 \
+            zig build run -- \
+              --no-graphics \
+              --bootrom=./dmg_bootrom.bin \
+              --cart=./cpu_instrs.gb \
+              --exit_at=6F3 \
+              --dump_vram=./test.vram
           diff ./test.vram ./tests/assets/cpu_instrs.vram
