@@ -23,9 +23,13 @@ pub const LCD_INFO = struct {
 /// User-provided options.
 pub const Options = struct {
     /// Exit the emulator after the BootROM has finished.
-    boot_only: bool = true,
+    boot_only: bool = false,
     /// Disable graphics.
     no_graphics: bool = false,
+    /// BootROM file path.
+    bootrom_path: ?[:0]const u8 = null,
+    /// Cartridge file path.
+    cartridge_path: ?[:0]const u8 = null,
 };
 
 pub const GameBoy = struct {

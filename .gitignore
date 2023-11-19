@@ -2,3 +2,4 @@
 /zig-out
 
 /dmg_bootrom.bin
+/*.gb
