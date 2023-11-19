@@ -866,7 +866,7 @@ pub fn srl(cpu: *Cpu, bus: *Peripherals, src: Operand) void {
     }
 }
 
-/// Set num-th bit to 1.
+/// Set num-th bit of src to 1.
 pub fn set(cpu: *Cpu, bus: *Peripherals, nth: u3, src: Operand) void {
     const state = struct {
         var step: usize = 0;
@@ -878,6 +878,37 @@ pub fn set(cpu: *Cpu, bus: *Peripherals, nth: u3, src: Operand) void {
             0 => if (src.read(cpu, bus)) |s| blk: {
                 const u: u8 = @truncate(s);
                 const res = u | (@as(u8, 1) << nth);
+                state.cache = res;
+                state.step = 1;
+                break :blk;
+            } else {
+                return;
+            },
+            1 => {
+                if (src.write(cpu, bus, @intCast(state.cache))) |_| {
+                    cpu.fetch(bus);
+                    state.step = 0;
+                }
+                return;
+            },
+            else => unreachable,
+        }
+    }
+}
+
+/// Reset num-th bit of src to 0.
+/// Noth that Zig cannot shadow any global variable, so we use `res_` instead of `res`.
+pub fn res_(cpu: *Cpu, bus: *Peripherals, nth: u3, src: Operand) void {
+    const state = struct {
+        var step: usize = 0;
+        var cache: u8 = 0;
+    };
+
+    while (true) {
+        switch (state.step) {
+            0 => if (src.read(cpu, bus)) |s| blk: {
+                const u: u8 = @truncate(s);
+                const res = u & ~(@as(u8, 1) << nth);
                 state.cache = res;
                 state.step = 1;
                 break :blk;
@@ -2199,6 +2230,30 @@ test "set" {
         set(&cpu, &peripherals, 3, .{ .indirect = .BC });
     }
     try expect(peripherals.read(&cpu.interrupts, cpu.regs.bc()) == 0b0000_1000);
+    try expect(cpu.regs.pc == 0xC001);
+}
+
+test "res" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // 1-cycle (+1 for decode)
+    cpu.regs.pc = 0xC000;
+    cpu.regs.b = 0b1111_1111;
+    for (0..1) |_| {
+        res_(&cpu, &peripherals, 0, .{ .reg8 = .B });
+    }
+    try expect(cpu.regs.b == 0b1111_1110);
+    try expect(cpu.regs.pc == 0xC001);
+
+    // 3-cycle (+1 for decode)
+    cpu.regs.pc = 0xC000;
+    cpu.regs.write_bc(0xC000);
+    peripherals.write(&cpu.interrupts, cpu.regs.bc(), 0b1111_1111);
+    for (0..3) |_| {
+        res_(&cpu, &peripherals, 3, .{ .indirect = .BC });
+    }
+    try expect(peripherals.read(&cpu.interrupts, cpu.regs.bc()) == 0b1111_0111);
     try expect(cpu.regs.pc == 0xC001);
 }
 
