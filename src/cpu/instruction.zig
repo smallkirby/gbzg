@@ -1027,6 +1027,45 @@ pub fn callc(cpu: *Cpu, bus: *Peripherals, c: Cond) void {
     }
 }
 
+/// RET if condition is met.
+/// Consumes 5-cycle if condition is met, otherwise 2-cycle.
+pub fn retc(cpu: *Cpu, bus: *Peripherals, c: Cond) void {
+    const state = struct {
+        var step: usize = 0;
+    };
+
+    while (true) {
+        switch (state.step) {
+            0 => {
+                state.step = 1; // consumes cycle
+                return;
+            },
+            1 => blk: {
+                if (cond(cpu, c)) {
+                    state.step = 2;
+                    break :blk;
+                } else {
+                    state.step = 3;
+                    break :blk;
+                }
+            },
+            2 => {
+                if (pop16(cpu, bus)) |v| {
+                    cpu.regs.pc = v;
+                    state.step = 3;
+                }
+                return;
+            },
+            3 => {
+                state.step = 0;
+                cpu.fetch(bus);
+                return;
+            },
+            else => unreachable,
+        }
+    }
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -2436,6 +2475,33 @@ test "callc" {
     }
     try expect(cpu.regs.pc == 0xC000 + 2 + 1); // +2 for Imm16, +1 for fetch
     try expect(cpu.regs.sp == 0xFFFE); // no push
+}
+
+test "retc" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // 5-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.sp = 0xFFF0;
+    cpu.regs.set_zf(false);
+    peripherals.write(&cpu.interrupts, cpu.regs.sp, 0x34);
+    peripherals.write(&cpu.interrupts, cpu.regs.sp + 1, 0x12);
+    for (0..5) |_| {
+        retc(&cpu, &peripherals, .NZ);
+    }
+    try expect(cpu.regs.pc == 0x1234 + 1); // +1 for fetch
+    try expect(cpu.regs.sp == 0xFFF0 + 2); // +2 for pop
+
+    // 2-cycle
+    cpu.regs.pc = 0xC000;
+    cpu.regs.sp = 0xFFF0;
+    cpu.regs.set_zf(false);
+    for (0..2) |_| {
+        retc(&cpu, &peripherals, .Z);
+    }
+    try expect(cpu.regs.pc == 0xC000 + 1); // +1 for fetch
+    try expect(cpu.regs.sp == 0xFFF0); // no pop
 }
 
 const expect = @import("std").testing.expect;
