@@ -367,7 +367,6 @@ fn cond(cpu: *Cpu, c: Cond) bool {
 pub fn jrc(cpu: *Cpu, bus: *Peripherals, c: Cond) void {
     const state = struct {
         var step: usize = 0;
-        var cache: u8 = 0;
     };
     while (true) {
         switch (state.step) {
@@ -933,19 +932,17 @@ pub fn res_(cpu: *Cpu, bus: *Peripherals, nth: u3, src: Operand) void {
 pub fn jp(cpu: *Cpu, bus: *Peripherals) void {
     const state = struct {
         var step: usize = 0;
-        var cache: u16 = 0;
     };
 
     switch (state.step) {
         0 => {
             if (@as(Operand, .{ .imm16 = .{} }).read(cpu, bus)) |v| {
-                state.cache = v;
+                cpu.regs.pc = v;
                 state.step = 1;
             }
             return; // consume cycle
         },
         1 => {
-            cpu.regs.pc = state.cache;
             state.step = 0;
             cpu.fetch(bus);
             return;
@@ -965,16 +962,14 @@ pub fn jphl(cpu: *Cpu, bus: *Peripherals) void {
 pub fn jpc(cpu: *Cpu, bus: *Peripherals, c: Cond) void {
     const state = struct {
         var step: usize = 0;
-        var cache: u16 = 0;
     };
     while (true) {
         switch (state.step) {
             0 => blk: {
                 if (@as(Operand, .{ .imm16 = .{} }).read(cpu, bus)) |v| {
-                    state.cache = v;
                     state.step = 1;
                     if (cond(cpu, c)) {
-                        cpu.regs.pc = state.cache;
+                        cpu.regs.pc = v;
                         return;
                     } else {
                         break :blk;
@@ -1005,11 +1000,12 @@ pub fn callc(cpu: *Cpu, bus: *Peripherals, c: Cond) void {
             0 => blk: {
                 if (@as(Operand, .{ .imm16 = .{} }).read(cpu, bus)) |v| {
                     state.cache = v;
-                    state.step = 1;
                     if (cond(cpu, c)) {
+                        state.step = 1;
                         break :blk;
                     } else {
                         cpu.fetch(bus);
+                        state.step = 0;
                     }
                 }
                 return;
