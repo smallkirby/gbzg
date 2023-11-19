@@ -10,7 +10,7 @@ const Operand = @import("operand.zig").Operand;
 pub fn decode(cpu: *Cpu, bus: *Peripherals) void {
     switch (cpu.ctx.opcode) {
         0x00 => inst.nop(cpu, bus),
-        0x10 => unreachable,
+        0x10 => inst.stop(cpu, bus),
         0x20 => inst.jrc(cpu, bus, .NZ),
         0x30 => inst.jrc(cpu, bus, .NC),
         0x01 => inst.ld(cpu, bus, .{ .reg16 = .BC }, .{ .imm16 = .{} }),

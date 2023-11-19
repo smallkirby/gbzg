@@ -1075,6 +1075,11 @@ pub fn rst(cpu: *Cpu, bus: *Peripherals, addr: u8) void {
     }
 }
 
+/// nop
+pub fn stop(cpu: *Cpu, bus: *Peripherals) void {
+    cpu.fetch(bus);
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
