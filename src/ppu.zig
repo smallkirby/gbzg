@@ -69,6 +69,9 @@ pub const Ppu = struct {
     /// TODO
     cycles: u8,
 
+    /// OAM DMA source address (address: 0xFF46)
+    oam_dma: ?u16 = null,
+
     /// VRAM
     vram: []u8,
     /// OAM (Object Attribute Memory)
@@ -173,12 +176,14 @@ pub const Ppu = struct {
                     break :blk self.vram[addr & 0x1FFF];
                 }
             },
+            // OAM
             0xFE00...0xFE9F => blk: {
                 if (self.mode == .OamScan or self.mode == .Drawing) {
                     // cannot read OAM during OAM Scan Mode or Drawing Mode
                     break :blk 0xFF;
                 } else {
-                    break :blk self.oam[addr & 0xFF];
+                    // cannot read OAM during OAM DMA
+                    break :blk if (self.oam_dma) |_| 0xFF else self.oam[addr & 0xFF];
                 }
             },
             0xFF40 => self.lcdc,
@@ -202,8 +207,11 @@ pub const Ppu = struct {
                 // cannot write VRAM during Drawing Mode
                 self.vram[addr & 0x1FFF] = val;
             },
+            // OAM
             0xFE00...0xFE9F => if (self.mode != .OamScan and self.mode != .Drawing) {
-                self.oam[addr & 0xFF] = val;
+                // cannot write OAM during OAM DMA
+                if (self.oam_dma == null)
+                    self.oam[addr & 0xFF] = val;
             },
             0xFF40 => self.lcdc = val,
             0xFF41 => self.stat = (self.stat & LYC_EQ_LY) | (val & 0b1111_1000),
@@ -211,13 +219,7 @@ pub const Ppu = struct {
             0xFF43 => self.scx = val,
             0xFF44 => {}, // write not allowed
             0xFF45 => self.lyc = val,
-            0xFF46 => {
-                if (val <= 0xDF) {
-                    unreachable;
-                } else {
-                    unreachable; // TODO: unimplemented
-                }
-            },
+            0xFF46 => self.oam_dma = @as(u16, @intCast(val)) << 8,
             0xFF47 => self.bgp = val,
             0xFF48 => self.obp0 = val,
             0xFF49 => self.obp1 = val,
@@ -455,6 +457,18 @@ pub const Ppu = struct {
             }
         } else {
             self.stat &= ~LYC_EQ_LY;
+        }
+    }
+
+    pub fn oam_dma_emulate_cycle(self: *@This(), val: u8) void {
+        if (self.oam_dma) |addr| {
+            if (self.mode != .OamScan and self.mode != .Drawing) {
+                self.oam[addr & 0xFF] = val;
+            }
+            self.oam_dma = addr +% 1;
+            if (self.oam_dma.? >= 0xA0) {
+                self.oam_dma = null;
+            }
         }
     }
 
