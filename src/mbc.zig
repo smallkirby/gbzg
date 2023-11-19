@@ -30,11 +30,13 @@ pub const Mbc = union(enum) {
                     .num_rom_banks = num_rom_banks,
                 },
             },
-            .ROMOnly, .ROM_SRAM, .ROM_SRAM_BATT => {
+            .ROMOnly, .ROM_SRAM, .ROM_SRAM_BATT => .{
+                .nombc = .{},
+            },
+            _ => {
                 std.log.err("Unsupported cartridge type: {}", .{cartridge_type});
                 unreachable;
             },
-            _ => unreachable,
         };
     }
 
