@@ -57,13 +57,14 @@ pub const Cartridge = struct {
         };
         var checksum: u8 = 0;
         for (0x34..0x4D) |i| {
-            checksum +%= @as([@sizeOf(CartridgeHeader)]u8, @bitCast(header))[i];
+            checksum -%= @as([@sizeOf(CartridgeHeader)]u8, @bitCast(header))[i];
+            checksum -%= 1;
         }
         header.header_checksum = checksum;
 
         var rom = [_]u8{0x00} ** rom_size;
         for (0..@sizeOf(CartridgeHeader)) |i| {
-            rom[i] = @as([@sizeOf(CartridgeHeader)]u8, @bitCast(header))[i];
+            rom[i + 0x100] = @as([@sizeOf(CartridgeHeader)]u8, @bitCast(header))[i];
         }
 
         return try Cartridge.new(&rom);
@@ -166,7 +167,8 @@ pub const CartridgeHeader = extern struct {
         var sum: u8 = 0;
         const bytes: [@sizeOf(@This())]u8 = @bitCast(self);
         for (0x34..0x4D) |i| {
-            sum -%= bytes[i] +% 1;
+            sum -%= bytes[i];
+            sum -%= 1;
         }
 
         if (sum != self.header_checksum) {
@@ -177,21 +179,21 @@ pub const CartridgeHeader = extern struct {
     }
 
     fn debug_dump(self: @This()) void {
-        std.log.debug("CartridgeHeader:", .{});
-        std.log.debug("entry_point: 0x{X}", .{self.entry_point});
-        std.log.debug("title: {s}", .{self.title});
-        std.log.debug("maker: {s}", .{self.maker});
-        std.log.debug("cgb_flag: 0x{X}", .{self.cgb_flag});
-        std.log.debug("new_license: 0x{X}", .{self.new_license});
-        std.log.debug("sgb_flag: 0x{X}", .{self.sgb_flag});
-        std.log.debug("cartridge_type: 0x{!}", .{self.cartridge_type});
-        std.log.debug("raw_rom_size: 0x{X}", .{self.raw_rom_size});
-        std.log.debug("raw_sram_size: 0x{!}", .{self.raw_sram_size});
-        std.log.debug("destination: 0x{X}", .{self.destination});
-        std.log.debug("old_license: 0x{X}", .{self.old_license});
-        std.log.debug("game_version: 0x{X}", .{self.game_version});
-        std.log.debug("header_checksum: 0x{X}", .{self.header_checksum});
-        std.log.debug("global_checksum: 0x{X}", .{self.global_checksum});
+        std.log.err("CartridgeHeader:", .{});
+        std.log.err("entry_point: 0x{X}", .{self.entry_point});
+        std.log.err("title: {s}", .{self.title});
+        std.log.err("maker: {s}", .{self.maker});
+        std.log.err("cgb_flag: 0x{X}", .{self.cgb_flag});
+        std.log.err("new_license: 0x{X}", .{self.new_license});
+        std.log.err("sgb_flag: 0x{X}", .{self.sgb_flag});
+        std.log.err("cartridge_type: 0x{!}", .{self.cartridge_type});
+        std.log.err("raw_rom_size: 0x{X}", .{self.raw_rom_size});
+        std.log.err("raw_sram_size: 0x{!}", .{self.raw_sram_size});
+        std.log.err("destination: 0x{X}", .{self.destination});
+        std.log.err("old_license: 0x{X}", .{self.old_license});
+        std.log.err("game_version: 0x{X}", .{self.game_version});
+        std.log.err("header_checksum: 0x{X}", .{self.header_checksum});
+        std.log.err("global_checksum: 0x{X}", .{self.global_checksum});
     }
 
     fn debug_new() @This() {
@@ -234,7 +236,7 @@ pub const CartridgeHeader = extern struct {
 };
 
 test "struct CartridgeHeader" {
-    try expect(@sizeOf(CartridgeHeader) == 80);
+    try expect(@sizeOf(CartridgeHeader) == 0x50);
 
     var bytes: [@sizeOf(CartridgeHeader)]u8 =
         [_]u8{ 0x01, 0x02, 0x03, 0x04 } // entry point
@@ -247,7 +249,8 @@ test "struct CartridgeHeader" {
     ;
     var checksum: u8 = 0;
     for (0x34..0x4D) |i| {
-        checksum +%= bytes[i];
+        checksum -%= bytes[i];
+        checksum -%= 1;
     }
     bytes[0x4D] = checksum;
     const header = CartridgeHeader.from_bytes(bytes);
@@ -322,13 +325,14 @@ test "cartridge init" {
     };
     var checksum: u8 = 0;
     for (0x34..0x4D) |i| {
-        checksum +%= @as([@sizeOf(CartridgeHeader)]u8, @bitCast(header))[i];
+        checksum -%= @as([@sizeOf(CartridgeHeader)]u8, @bitCast(header))[i];
+        checksum -%= 1;
     }
     header.header_checksum = checksum;
 
     var rom = [_]u8{0x00} ** rom_size;
     for (0..@sizeOf(CartridgeHeader)) |i| {
-        rom[i] = @as([@sizeOf(CartridgeHeader)]u8, @bitCast(header))[i];
+        rom[i + 0x100] = @as([@sizeOf(CartridgeHeader)]u8, @bitCast(header))[i];
     }
 
     var cartridge = try Cartridge.new(&rom);
@@ -356,13 +360,14 @@ test "cartridge IO" {
     };
     var checksum: u8 = 0;
     for (0x34..0x4D) |i| {
-        checksum +%= @as([@sizeOf(CartridgeHeader)]u8, @bitCast(header))[i];
+        checksum -%= @as([@sizeOf(CartridgeHeader)]u8, @bitCast(header))[i];
+        checksum -%= 1;
     }
     header.header_checksum = checksum;
 
     var rom = [_]u8{0x00} ** rom_size;
     for (0..@sizeOf(CartridgeHeader)) |i| {
-        rom[i] = @as([@sizeOf(CartridgeHeader)]u8, @bitCast(header))[i];
+        rom[i + 0x100] = @as([@sizeOf(CartridgeHeader)]u8, @bitCast(header))[i];
     }
 
     var cartridge = try Cartridge.new(&rom);
@@ -375,7 +380,7 @@ test "cartridge IO" {
     try expect(cartridge.mbc.mbc1.sram_enabled == true);
     try expect(cartridge.sram.len == 0x8000);
 
-    try expect(cartridge.read(0x0000) == 0x01); // entry_point[0]
+    try expect(cartridge.read(0x0000 + 0x100) == 0x01); // entry_point[0]
     try expect(cartridge.read(0xA000) == 0x78); // SRAM
 }
 
