@@ -927,6 +927,32 @@ pub fn res_(cpu: *Cpu, bus: *Peripherals, nth: u3, src: Operand) void {
     }
 }
 
+/// Move immidiate 16-bit value to PC.
+/// Consumes additional 1 cycle.
+pub fn jp(cpu: *Cpu, bus: *Peripherals) void {
+    const state = struct {
+        var step: usize = 0;
+        var cache: u16 = 0;
+    };
+
+    switch (state.step) {
+        0 => {
+            if (@as(Operand, .{ .imm16 = .{} }).read(cpu, bus)) |v| {
+                state.cache = v;
+                state.step = 1;
+            }
+            return; // consume cycle
+        },
+        1 => {
+            cpu.regs.pc = state.cache;
+            state.step = 0;
+            cpu.fetch(bus);
+            return;
+        },
+        else => unreachable,
+    }
+}
+
 test "nop" {
     var cpu = Cpu.new();
     var peripherals = try tutil.t_init_peripherals();
@@ -2255,6 +2281,20 @@ test "res" {
     }
     try expect(peripherals.read(&cpu.interrupts, cpu.regs.bc()) == 0b1111_0111);
     try expect(cpu.regs.pc == 0xC001);
+}
+
+test "jp" {
+    var cpu = Cpu.new();
+    var peripherals = try tutil.t_init_peripherals();
+
+    // src=Imm16, 4-cycle
+    cpu.regs.pc = 0xC000;
+    peripherals.write(&cpu.interrupts, cpu.regs.pc, 0x34);
+    peripherals.write(&cpu.interrupts, cpu.regs.pc + 1, 0x12);
+    for (0..4) |_| {
+        jp(&cpu, &peripherals);
+    }
+    try expect(cpu.regs.pc == 0x1234 + 1); // +1 for fetch
 }
 
 const expect = @import("std").testing.expect;
