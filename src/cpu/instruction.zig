@@ -1196,7 +1196,7 @@ pub fn ld_hlsp(cpu: *Cpu, bus: *Peripherals) void {
         0 => if (@as(Operand, .{ .imm8 = .{} }).read(cpu, bus)) |v| {
             const v8: u8 = @truncate(v);
             const vi8: i8 = @as(i8, @bitCast(v8));
-            const u = @as(u16, @intCast(vi8));
+            const u: u16 = @bitCast(@as(i16, @intCast(vi8)));
             state.step = 1;
 
             cpu.regs.set_zf(false); // unconditional
@@ -1247,7 +1247,7 @@ pub fn add_sp(cpu: *Cpu, bus: *Peripherals) void {
         0 => if (@as(Operand, .{ .imm8 = .{} }).read(cpu, bus)) |v| {
             const v8: u8 = @truncate(v);
             const vi8: i8 = @as(i8, @bitCast(v8));
-            const u = @as(u16, @intCast(vi8));
+            const u: u16 = @bitCast(@as(i16, @intCast(vi8)));
 
             cpu.regs.set_zf(false); // unconditional
             cpu.regs.set_nf(false); // unconditional
