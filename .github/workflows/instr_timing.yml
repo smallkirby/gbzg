@@ -47,11 +47,11 @@ jobs:
 
       - name: Run tests
         run: |
-          timeout 120 \
+          timeout 30 \
             zig build run -- \
               --no-graphics \
               --bootrom=./dmg_bootrom.bin \
               --cart=./instr_timing.gb \
-              --exit_at=8B1 \
-              --dump_vram=./test.vram
+              --dump_vram=./test.vram \
+          || true
           diff ./test.vram ./tests/assets/instr_timing.vram
