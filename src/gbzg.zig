@@ -32,6 +32,8 @@ pub const Options = struct {
     cartridge_path: ?[:0]const u8 = null,
     /// Exit on PC reaching this address.
     exit_at: ?u16 = null,
+    /// Dump VRAM to this file.
+    vram_dump_path: ?[:0]const u8 = null,
 };
 
 pub const GameBoy = struct {

@@ -53,6 +53,8 @@ fn parse_args() !Options {
         } else if (std.mem.startsWith(u8, arg, "--exit_at=")) {
             const s = arg["--exit_at=".len..];
             options.exit_at = try std.fmt.parseInt(u16, s, 16);
+        } else if (std.mem.startsWith(u8, arg, "--dump_vram=")) {
+            options.vram_dump_path = arg["--dump_vram=".len..];
         } else {
             std.log.err("Unknown argument: {s}\n", .{arg});
             return error.Unreachable;
@@ -81,7 +83,25 @@ fn signal_handler(sig: c_int) callconv(.C) void {
     saved_gb.?.deinit() catch unreachable;
     std.log.info("Received signal: 0x{X}\n", .{sig});
     saved_gb.?.cpu.debug_print_regs();
+    dump_vram_if_necessary();
     std.os.exit(1);
+}
+
+fn dump_vram_if_necessary() void {
+    if (saved_gb.?.options.vram_dump_path) |path| {
+        const vram = saved_gb.?.peripherals.ppu.buffer;
+        const file = std.fs.cwd().createFile(path, .{}) catch |e| {
+            std.log.err("Failed to create file: {}\n", .{e});
+            return;
+        };
+        defer file.close();
+        _ = file.write(vram) catch |e| {
+            std.log.err("Failed to write to file: {}\n", .{e});
+            return;
+        };
+
+        std.log.info("Dumped VRAM to: {s}\n", .{path});
+    }
 }
 
 fn start(options: Options) !void {
@@ -111,11 +131,13 @@ fn start(options: Options) !void {
     saved_gb = &gb;
     defer {
         gb.deinit() catch unreachable;
+        dump_vram_if_necessary();
     }
 
     gb.run() catch |e| {
         gb.deinit() catch {};
         std.log.err("ERROR:\n{!}", .{e});
+        dump_vram_if_necessary();
         unreachable;
     };
 }
