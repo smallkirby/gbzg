@@ -21,6 +21,7 @@ const Registers = @import("register.zig").Registers;
 const Peripherals = @import("../peripherals.zig").Peripherals;
 const Operand = @import("operand.zig").Operand;
 const Cond = @import("operand.zig").Cond;
+const std = @import("std");
 
 /// Do nothing. Just fetch the next instruction.
 pub fn nop(cpu: *Cpu, bus: *Peripherals) void {
@@ -1265,6 +1266,11 @@ pub fn add_sp(cpu: *Cpu, bus: *Peripherals) void {
         },
         else => unreachable,
     }
+}
+
+pub fn unimplemented_inst(cpu: *Cpu, bus: *Peripherals) void {
+    std.log.err("unimplemented instruction: PC={X:0>2}, OP={X:0>2}", .{ cpu.regs.pc, cpu.ctx.opcode });
+    unreachable;
 }
 
 test "nop" {
