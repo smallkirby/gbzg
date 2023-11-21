@@ -11,6 +11,10 @@ on:
     branches:
       - master
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   test:
     name: cpu_instrs
@@ -54,4 +58,4 @@ jobs:
               --cart=./cpu_instrs.gb \
               --exit_at=6F3 \
               --dump_vram=./test.vram
-          diff ./test.vram ./tests/assets/cpu_instrs.vram
+          diff <(xxd ./test.vram) <(xxd ./tests/assets/cpu_instrs.vram)

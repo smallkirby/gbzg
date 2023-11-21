@@ -11,6 +11,10 @@ on:
     branches:
       - master
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   test:
     name: dmg-acid2
@@ -54,4 +58,4 @@ jobs:
               --cart=./dmg-acid2.gb \
               --dump_vram=./test.vram \
           || true
-          diff ./test.vram ./tests/assets/dmg-acid2.vram
+          diff <(xxd ./test.vram) <(./tests/assets/dmg-acid2.vram)
