@@ -20,6 +20,9 @@ const Mode = enum(u2) {
 
 /// Picture Processing Unit
 pub const Ppu = struct {
+    /// Whether this PPU is for GameBoy Color
+    is_cgb: bool = false,
+
     /// Mode of PPU
     mode: Mode,
     /// LCD Control Register (address: 0xFF40)
@@ -72,8 +75,14 @@ pub const Ppu = struct {
     /// OAM DMA source address (address: 0xFF46)
     oam_dma: ?u16 = null,
 
-    /// VRAM
-    vram: []u8,
+    /// VRAM (Switchable Bank 0 for CGB)
+    vram1: []u8,
+    /// VRAM (Switchable Bank 1 for CGB)
+    vram2: []u8,
+    /// bg palette memory
+    bg_palette_mem: []u8,
+    /// window palette memory
+    window_palette_mem: []u8,
     /// OAM (Object Attribute Memory)
     oam: [OAM_SIZE]u8,
     /// LCD buffer
@@ -106,6 +115,8 @@ pub const Ppu = struct {
         pub const BLACK: u8 = 0x00;
     };
 
+    pub const Priority = std.meta.Tuple(&.{ bool, bool });
+
     /// Sprite is 4 bytes data representing a 8x8 or 8x16 pixels object.
     /// OAM contains 40 sprites, while sprite buffer contains 10 sprites.
     /// Sprite is fetched from OAM in OAM Scan Mode,
@@ -122,6 +133,10 @@ pub const Ppu = struct {
         flags: u8,
 
         const Flags = struct {
+            /// Color palette (CGB only)
+            pub const COLOR_PALETTE: u8 = 0b0000_0111;
+            /// VRAM Bank
+            pub const VRAM_BANK: u8 = 0b0000_1000;
             /// Palette number of the sprite
             pub const PALETTE: u8 = 0b0001_0000;
             /// Flip X
@@ -141,10 +156,28 @@ pub const Ppu = struct {
         }
     };
 
+    const BGAttribute = packed struct {
+        /// Which of BGP0~7 to use
+        color_palette: u3,
+        /// VRAM Bank
+        vram_bank: u1,
+        // Unused
+        _unused: u1,
+        /// Flip X
+        flip_x: bool,
+        /// Flip Y
+        flip_y: bool,
+        /// Priority
+        prio: bool,
+    };
+
     pub fn new() !@This() {
-        const vram = try gbzg.ppu_allocator.alloc([VRAM_SIZE]u8, 1);
+        const vram1 = try gbzg.ppu_allocator.alloc([VRAM_SIZE]u8, 1);
+        const vram2 = try gbzg.ppu_allocator.alloc([VRAM_SIZE]u8, 1);
         const oam = try gbzg.ppu_allocator.alloc([OAM_SIZE]u8, 1);
-        const buffer = try gbzg.ppu_allocator.alloc([LCD_INFO.pixels]u8, 1);
+        const buffer = try gbzg.ppu_allocator.alloc([LCD_INFO.pixels * 4]u8, 1); // *4 for RGBA
+        const bg_palette_mem = try gbzg.ppu_allocator.alloc([0x40]u8, 1);
+        const window_palette_mem = try gbzg.ppu_allocator.alloc([0x40]u8, 1);
         return .{
             .mode = .OamScan,
             .lcdc = 0,
@@ -160,7 +193,10 @@ pub const Ppu = struct {
             .wx = 0,
             .wly = 0,
             .cycles = 20,
-            .vram = &vram[0],
+            .vram1 = &vram1[0],
+            .vram2 = &vram2[0],
+            .bg_palette_mem = &bg_palette_mem[0],
+            .window_palette_mem = &window_palette_mem[0],
             .oam = oam[0],
             .buffer = &buffer[0],
         };
@@ -173,7 +209,7 @@ pub const Ppu = struct {
                     // cannot read VRAM during Drawing Mode
                     break :blk 0xFF;
                 } else {
-                    break :blk self.vram[addr & 0x1FFF];
+                    break :blk self.vram1[addr & 0x1FFF];
                 }
             },
             // OAM
@@ -205,7 +241,7 @@ pub const Ppu = struct {
         switch (addr) {
             0x8000...0x9FFF => if (self.mode != .Drawing) {
                 // cannot write VRAM during Drawing Mode
-                self.vram[addr & 0x1FFF] = val;
+                self.vram1[addr & 0x1FFF] = val;
             },
             // OAM
             0xFE00...0xFE9F => if (self.mode != .OamScan and self.mode != .Drawing) {
@@ -238,12 +274,19 @@ pub const Ppu = struct {
     /// Each `tile` represens 8x8 `pixel`s.
     /// `Tile` has 8 rows and each row has 2 bytes (16 bits).
     /// `Pixel` is 2 bits and pair of 2 bits in higher/lowrer part of `tile` represents it.
-    fn get_pixel_from_tile(self: @This(), tile_idx: usize, row: u3, col: u3) u2 {
+    fn get_pixel_from_tile(
+        self: @This(),
+        tile_idx: usize,
+        row: u3,
+        col: u3,
+        vram_bank: u2,
+    ) u2 {
+        const vram = if (vram_bank == 0) self.vram1 else self.vram2;
         const r = @as(u8, row) * 2;
         const c = 7 - col;
         const tile_addr = tile_idx << TILE_IDX_TO_ADDR_SHIFT;
-        const low = self.vram[(tile_addr | r) & 0x1FFF];
-        const high = self.vram[(tile_addr | (r + 1)) & 0x1FFF];
+        const low = vram[(tile_addr | r) & 0x1FFF];
+        const high = vram[(tile_addr | (r + 1)) & 0x1FFF];
         return (@as(u2, @intCast((high >> c) & 1))) << 1 |
             @as(u2, @intCast((low >> c) & 1));
     }
@@ -279,7 +322,7 @@ pub const Ppu = struct {
             TileMapInfo.AddrOne
         else
             TileMapInfo.AddrTwo;
-        const ret = self.vram[(start_addr + (@as(usize, @intCast(row)) * TileMapInfo.COLS) + col) & 0x3FFF];
+        const ret = self.vram1[(start_addr + (@as(usize, @intCast(row)) * TileMapInfo.COLS) + col) & 0x3FFF];
 
         if (self.lcdc & BG_TILE_DATA_ADDRESSING_MODE != 0) {
             return ret;
@@ -293,34 +336,67 @@ pub const Ppu = struct {
     /// LCD is 100x144 pixel, while Tile Map has 256x256 pixel.
     /// Therefore, this function renders 160x144 pixels of Tile Map decided by SCX and SCY.
     /// TODO: function name should be changed to `render_bg_line` ?
-    fn render_bg(self: *@This(), bg_prio: *[LCD_INFO.width]bool) void {
+    fn render_bg(self: *@This(), bg_prio: *[LCD_INFO.width]Priority) void {
         if (self.lcdc & BG_WINDOW_ENABLE == 0) {
             return;
         }
 
         const y = self.ly +% self.scy;
         for (0..LCD_INFO.width) |i| {
-            const x: u8 = @as(u8, @intCast(i & 0xFF)) +% self.scx;
+            const x: u8 = @as(u8, @truncate(i)) +% self.scx;
             const tile_idx = self.get_tile_idx_from_tile_map(
                 @intFromBool((self.lcdc & BG_TILE_MAP) != 0),
                 y / TileInfo.HEIGHT,
                 x / TileInfo.WIDTH,
             );
+
+            const attr = self.get_bg_attr(
+                @intFromBool((self.lcdc & BG_TILE_MAP) != 0),
+                y / TileInfo.HEIGHT,
+                x / TileInfo.WIDTH,
+            );
+            const row: u8 = if (attr) |a| b: {
+                if (a.flip_y) {
+                    break :b TileInfo.HEIGHT - 1 - (y % TileInfo.HEIGHT);
+                } else {
+                    break :b y % TileInfo.HEIGHT;
+                }
+            } else y % TileInfo.HEIGHT;
+            const col: u8 = if (attr) |a| b: {
+                if (a.flip_x) {
+                    break :b TileInfo.WIDTH - 1 - (x % TileInfo.WIDTH);
+                } else {
+                    break :b x % TileInfo.WIDTH;
+                }
+            } else x % TileInfo.WIDTH;
+            const bank = if (attr) |a| @intFromBool(a.vram_bank != 0) else 0;
+
             const pixel = self.get_pixel_from_tile(
                 tile_idx,
-                @intCast(y % TileInfo.HEIGHT),
-                @intCast(x % TileInfo.WIDTH),
+                @intCast(row),
+                @intCast(col),
+                bank,
             );
+            bg_prio[i][1] = pixel != 0;
 
-            self.buffer[@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i] = switch ((self.bgp >> ((@as(u3, pixel) * 2))) & 0b11) {
-                0 => COLOR.WHITE,
-                1 => COLOR.LIGHT_GRAY,
-                2 => COLOR.DARK_GRAY,
-                3 => COLOR.BLACK,
-                else => unreachable,
-            };
-
-            bg_prio[i] = pixel != 0;
+            if (self.is_cgb) {
+                const colors = self.get_color_from_palette_mem(
+                    self.bg_palette_mem,
+                    attr.?.color_palette,
+                    pixel,
+                );
+                for (colors, 0..) |color, j| {
+                    self.buffer[(@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i) * 4 + j] = color * 8 | color / 4;
+                }
+            } else {
+                self.buffer[@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i] = switch ((self.bgp >> ((@as(u3, pixel) * 2))) & 0b11) {
+                    0 => COLOR.WHITE,
+                    1 => COLOR.LIGHT_GRAY,
+                    2 => COLOR.DARK_GRAY,
+                    3 => COLOR.BLACK,
+                    else => unreachable,
+                };
+            }
         }
     }
 
@@ -329,7 +405,7 @@ pub const Ppu = struct {
     /// - Window is rendered at (wx - 7, wy) position. (while bg at (0,0))
     /// - Window fetches data from (0, 0) of 256x256 TileMap (while bg from (scx, scy))
     /// - Window is rendered on the top of bg.
-    fn render_window(self: *@This(), bg_info: *[LCD_INFO.width]bool) void {
+    fn render_window(self: *@This(), bg_prio: *[LCD_INFO.width]Priority) void {
         if (self.lcdc & BG_WINDOW_ENABLE == 0 or self.lcdc & WINDOW_ENABLE == 0 or self.wy > self.ly) {
             return;
         }
@@ -353,6 +429,7 @@ pub const Ppu = struct {
                 tile_idx,
                 @intCast(y % TileInfo.HEIGHT),
                 @intCast(x_res[0] % TileInfo.WIDTH),
+                0,
             );
 
             self.buffer[@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i] = switch ((self.bgp >> ((@as(u3, pixel) * 2))) & 0b11) {
@@ -363,7 +440,7 @@ pub const Ppu = struct {
                 else => unreachable,
             };
 
-            bg_info[i] = pixel != 0;
+            bg_prio[i][1] = pixel != 0;
         }
 
         self.wly += wly_add;
@@ -413,7 +490,7 @@ pub const Ppu = struct {
     }
 
     /// Render sprites.
-    fn render_sprite(self: *@This(), bg_prio: *[LCD_INFO.width]bool) void {
+    fn render_sprite(self: *@This(), bg_prio: *[LCD_INFO.width]Priority) void {
         if (self.lcdc & SPRITE_ENABLE == 0) {
             return;
         }
@@ -442,10 +519,11 @@ pub const Ppu = struct {
                     tile_idx,
                     @intCast(row),
                     @intCast(col_flipped),
+                    0,
                 );
                 const i: usize = @intCast(sprite.x +% col);
                 if (i < LCD_INFO.width and pixel != 0) {
-                    if (sprite.flags & Flags.PRIORITY == 0 or !bg_prio[i]) {
+                    if (sprite.flags & Flags.PRIORITY == 0 or !bg_prio[i][1]) {
                         self.buffer[@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i] = switch ((palette >> ((@as(u3, pixel) * 2))) & 0b11) {
                             0 => COLOR.WHITE,
                             1 => COLOR.LIGHT_GRAY,
@@ -460,11 +538,47 @@ pub const Ppu = struct {
     }
 
     fn render(self: *@This()) void {
-        var bg_prio = [_]bool{false} ** LCD_INFO.width;
+        var bg_prio = [_]Priority{.{ false, false }} ** LCD_INFO.width;
 
         self.render_bg(&bg_prio);
         self.render_window(&bg_prio);
         self.render_sprite(&bg_prio);
+    }
+
+    /// Get bg attribute from CGB additionnal 32x32 bytes map in VRAM Bank 1.
+    fn get_bg_attr(self: @This(), tile_map: u1, row: u8, col: u8) ?BGAttribute {
+        if (self.is_cgb == false) {
+            return null;
+        }
+
+        const start_addr = if (tile_map == 0)
+            TileMapInfo.AddrOne
+        else
+            TileMapInfo.AddrTwo;
+        return @bitCast(self.vram2[@as(u14, @truncate(start_addr + (@as(usize, @intCast(row)) * TileMapInfo.COLS) + col))]);
+    }
+
+    /// Get RGB color from specified palette. (CGB only)
+    fn get_color_from_palette_mem(
+        _: @This(),
+        palette_mem: []u8,
+        palette: u3,
+        pixel: u8,
+    ) [4]u8 {
+        const rgb555 =
+            @as(u16, palette_mem[
+            @as(usize, palette) * 8 + @as(usize, pixel) * 2
+        ]) |
+            @as(u16, palette_mem[
+            @as(usize, palette) * 8 + @as(usize, pixel) * 2 + 1
+        ]);
+
+        return [4]u8{
+            @truncate(rgb555 & 0b0001_1111),
+            @truncate((rgb555 >> 5) & 0b0001_1111),
+            @truncate((rgb555 >> 10) & 0b0001_1111),
+            0xFF,
+        };
     }
 
     /// TODO
@@ -570,28 +684,28 @@ test "init PPU" {
 test "get_pixel_from_tile" {
     const ppu = try Ppu.new();
     // MSB of each byte is `high`er
-    ppu.vram[0] = 0b1111_0110; // i0,r0,low
-    ppu.vram[1] = 0b1000_1111; // i0,r0,high
-    ppu.vram[18] = 0b1111_0110; // i1,r1,low
-    ppu.vram[19] = 0b1000_1111; // i1,r1,high
+    ppu.vram1[0] = 0b1111_0110; // i0,r0,low
+    ppu.vram1[1] = 0b1000_1111; // i0,r0,high
+    ppu.vram1[18] = 0b1111_0110; // i1,r1,low
+    ppu.vram1[19] = 0b1000_1111; // i1,r1,high
 
-    try expect(ppu.get_pixel_from_tile(0, 0, 0) == 0b11);
-    try expect(ppu.get_pixel_from_tile(0, 0, 1) == 0b01);
-    try expect(ppu.get_pixel_from_tile(0, 0, 2) == 0b01);
-    try expect(ppu.get_pixel_from_tile(0, 0, 3) == 0b01);
-    try expect(ppu.get_pixel_from_tile(0, 0, 4) == 0b10);
-    try expect(ppu.get_pixel_from_tile(0, 0, 5) == 0b11);
-    try expect(ppu.get_pixel_from_tile(0, 0, 6) == 0b11);
-    try expect(ppu.get_pixel_from_tile(0, 0, 7) == 0b10);
+    try expect(ppu.get_pixel_from_tile(0, 0, 0, 0) == 0b11);
+    try expect(ppu.get_pixel_from_tile(0, 0, 1, 0) == 0b01);
+    try expect(ppu.get_pixel_from_tile(0, 0, 2, 0) == 0b01);
+    try expect(ppu.get_pixel_from_tile(0, 0, 3, 0) == 0b01);
+    try expect(ppu.get_pixel_from_tile(0, 0, 4, 0) == 0b10);
+    try expect(ppu.get_pixel_from_tile(0, 0, 5, 0) == 0b11);
+    try expect(ppu.get_pixel_from_tile(0, 0, 6, 0) == 0b11);
+    try expect(ppu.get_pixel_from_tile(0, 0, 7, 0) == 0b10);
 
-    try expect(ppu.get_pixel_from_tile(1, 1, 0) == 0b11);
-    try expect(ppu.get_pixel_from_tile(1, 1, 1) == 0b01);
-    try expect(ppu.get_pixel_from_tile(1, 1, 2) == 0b01);
-    try expect(ppu.get_pixel_from_tile(1, 1, 3) == 0b01);
-    try expect(ppu.get_pixel_from_tile(1, 1, 4) == 0b10);
-    try expect(ppu.get_pixel_from_tile(1, 1, 5) == 0b11);
-    try expect(ppu.get_pixel_from_tile(1, 1, 6) == 0b11);
-    try expect(ppu.get_pixel_from_tile(1, 1, 7) == 0b10);
+    try expect(ppu.get_pixel_from_tile(1, 1, 0, 0) == 0b11);
+    try expect(ppu.get_pixel_from_tile(1, 1, 1, 0) == 0b01);
+    try expect(ppu.get_pixel_from_tile(1, 1, 2, 0) == 0b01);
+    try expect(ppu.get_pixel_from_tile(1, 1, 3, 0) == 0b01);
+    try expect(ppu.get_pixel_from_tile(1, 1, 4, 0) == 0b10);
+    try expect(ppu.get_pixel_from_tile(1, 1, 5, 0) == 0b11);
+    try expect(ppu.get_pixel_from_tile(1, 1, 6, 0) == 0b11);
+    try expect(ppu.get_pixel_from_tile(1, 1, 7, 0) == 0b10);
 }
 
 test "get_tile_idx_from_tile_map" {
@@ -611,8 +725,8 @@ test "get_tile_idx_from_tile_map" {
         0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F,
     } ** 2 // row1
     ;
-    const tile_map1 = ppu.vram[TileMapInfo.AddrOne..(TileMapInfo.AddrOne + TileMapInfo.SIZE)];
-    const tile_map2 = ppu.vram[TileMapInfo.AddrTwo..(TileMapInfo.AddrTwo + TileMapInfo.SIZE)];
+    const tile_map1 = ppu.vram1[TileMapInfo.AddrOne..(TileMapInfo.AddrOne + TileMapInfo.SIZE)];
+    const tile_map2 = ppu.vram1[TileMapInfo.AddrTwo..(TileMapInfo.AddrTwo + TileMapInfo.SIZE)];
     for (bytes1, 0..) |b, i| {
         tile_map1[i] = b;
     }
@@ -652,7 +766,7 @@ test "render_bg" {
     } ** 32 // 32 rows
     ;
     try expect(tile_map_bytes.len == TileMapInfo.SIZE);
-    const tile_map = ppu.vram[TileMapInfo.AddrOne..(TileMapInfo.AddrOne + TileMapInfo.SIZE)];
+    const tile_map = ppu.vram1[TileMapInfo.AddrOne..(TileMapInfo.AddrOne + TileMapInfo.SIZE)];
     for (tile_map_bytes, 0..) |b, i| {
         tile_map[i] = b;
     }
@@ -670,7 +784,7 @@ test "render_bg" {
         0b1111_0110, 0b1000_1110, // BDDD_LBBW
         0b1111_0110, 0b1000_1110, // BDDD_LBBW
     } ** Ppu.TileDataInfo.SIZE;
-    const tile_data = ppu.vram[0..0x1800];
+    const tile_data = ppu.vram1[0..0x1800];
     for (tile_bytes1, 0..) |b, i| {
         tile_data[i] = b;
     }
@@ -679,7 +793,7 @@ test "render_bg" {
     // TileMap[0~20(160/8)] is used.
     // Therefore, TileData[0~20] is used
     // (now, Tile Index in TileData[0] is straight mapped)
-    var bg_prio = [_]bool{false} ** LCD_INFO.width;
+    var bg_prio = [_]Ppu.Priority{.{ false, false }} ** LCD_INFO.width;
     ppu.render_bg(&bg_prio);
 
     for (0..LCD_INFO.width / 8) |i| {
