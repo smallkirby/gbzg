@@ -34,6 +34,8 @@ pub const Options = struct {
     exit_at: ?u16 = null,
     /// Dump VRAM to this file.
     vram_dump_path: ?[:0]const u8 = null,
+    /// GameBoy Color mode.
+    color: bool = false,
 };
 
 pub const GameBoy = struct {
@@ -47,7 +49,11 @@ pub const GameBoy = struct {
     const M_CYCLE_NANOS: u128 = M_CYCLE_CLOCK * 1_000_000_000 / CPU_CLOCK_HZ;
 
     pub fn new(bootrom: Bootrom, cartdige: Cartridge, renderer: Renderer, options: Options) !@This() {
-        const peripherals = try Peripherals.new(bootrom, cartdige);
+        const peripherals = try Peripherals.new(
+            bootrom,
+            cartdige,
+            options.color,
+        );
         const lcd = try LCD.new(renderer);
         const cpu = Cpu.new();
 

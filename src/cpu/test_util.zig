@@ -8,7 +8,7 @@ pub fn t_init_peripherals() !Peripherals {
     var img = [_]u8{ 0x00, 0x00 };
     const bootram = Bootrom.new(&img);
     const cart = try Cartridge.debug_new();
-    var peripherals = try Peripherals.new(bootram, cart);
+    var peripherals = try Peripherals.new(bootram, cart, false);
 
     return peripherals;
 }

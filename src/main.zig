@@ -53,6 +53,8 @@ fn parse_args() !Options {
         } else if (std.mem.startsWith(u8, arg, "--exit_at=")) {
             const s = arg["--exit_at=".len..];
             options.exit_at = try std.fmt.parseInt(u16, s, 16);
+        } else if (std.mem.eql(u8, arg, "--color")) {
+            options.color = true;
         } else if (std.mem.startsWith(u8, arg, "--dump_vram=")) {
             options.vram_dump_path = arg["--dump_vram=".len..];
         } else {

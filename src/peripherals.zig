@@ -16,12 +16,12 @@ pub const Peripherals = struct {
     cartridge: Cartridge,
     timer: Timer,
 
-    pub fn new(bootrom: Bootrom, cartridge: Cartridge) !Peripherals {
+    pub fn new(bootrom: Bootrom, cartridge: Cartridge, color: bool) !Peripherals {
         return Peripherals{
             .bootrom = bootrom,
             .hram = try HRam.new(),
             .wram = try WRam.new(),
-            .ppu = try Ppu.new(),
+            .ppu = try Ppu.new(color),
             .cartridge = cartridge,
             .timer = Timer.new(),
         };
@@ -90,7 +90,7 @@ test "Initialize peripherals" {
     var rom = [_]u8{ 0x00, 0x00, 0x00, 0x00 };
     var bootrom = Bootrom.new(&rom);
     const cart = try Cartridge.debug_new();
-    var peripherals = try Peripherals.new(bootrom, cart);
+    var peripherals = try Peripherals.new(bootrom, cart, false);
 
     _ = peripherals;
 }
@@ -99,7 +99,7 @@ test "Basic peripheral IO" {
     var rom = [_]u8{ 0x00, 0x00, 0x00, 0x00 };
     var bootrom = Bootrom.new(&rom);
     const cart = try Cartridge.debug_new();
-    var peripherals = try Peripherals.new(bootrom, cart);
+    var peripherals = try Peripherals.new(bootrom, cart, false);
     var ints = Interrupts.new();
 
     try expect(peripherals.read(&ints, 0x0000) == 0x00);

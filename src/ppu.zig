@@ -194,7 +194,7 @@ pub const Ppu = struct {
         prio: bool,
     };
 
-    pub fn new() !@This() {
+    pub fn new(color: bool) !@This() {
         const vram1 = try gbzg.ppu_allocator.alloc([VRAM_SIZE]u8, 1);
         const vram2 = try gbzg.ppu_allocator.alloc([VRAM_SIZE]u8, 1);
         const oam = try gbzg.ppu_allocator.alloc([OAM_SIZE]u8, 1);
@@ -202,6 +202,7 @@ pub const Ppu = struct {
         const bg_palette_mem = try gbzg.ppu_allocator.alloc([0x40]u8, 1);
         const sprite_palette_mem = try gbzg.ppu_allocator.alloc([0x40]u8, 1);
         return .{
+            .is_cgb = color,
             .mode = .OamScan,
             .lcdc = 0,
             .stat = 0,
@@ -859,12 +860,12 @@ pub const Ppu = struct {
 };
 
 test "init PPU" {
-    const ppu = try Ppu.new();
+    const ppu = try Ppu.new(false);
     try expect(ppu.mode == .OamScan);
 }
 
 test "get_pixel_from_tile" {
-    const ppu = try Ppu.new();
+    const ppu = try Ppu.new(false);
     // MSB of each byte is `high`er
     ppu.vram1[0] = 0b1111_0110; // i0,r0,low
     ppu.vram1[1] = 0b1000_1111; // i0,r0,high
@@ -892,7 +893,7 @@ test "get_pixel_from_tile" {
 
 test "get_tile_idx_from_tile_map" {
     const TileMapInfo = Ppu.TileMapInfo;
-    var ppu = try Ppu.new();
+    var ppu = try Ppu.new(false);
     const bytes1 = [_]u8{
         0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
     } ** 2 // row0
@@ -932,7 +933,7 @@ test "get_tile_idx_from_tile_map" {
 test "render_bg" {
     const TileMapInfo = Ppu.TileMapInfo;
     const C = Ppu.COLOR;
-    var ppu = try Ppu.new();
+    var ppu = try Ppu.new(false);
     ppu.lcdc |= Ppu.BG_WINDOW_ENABLE;
     ppu.ly = 0;
     ppu.scx = 0;
@@ -993,7 +994,7 @@ test "render_bg" {
 test "sprites init" {
     try expect(@sizeOf(Ppu.Sprite) == 4);
 
-    var ppu = try Ppu.new();
+    var ppu = try Ppu.new(false);
     for (0..Ppu.OAM_SIZE) |i| {
         ppu.oam[i] = 0;
     }
@@ -1016,7 +1017,7 @@ test "sprites init" {
 }
 
 test "sprite ordering" {
-    var ppu = try Ppu.new();
+    var ppu = try Ppu.new(false);
     ppu.ly = 8;
     const sprites = [_]Ppu.Sprite{
         .{ .y = 1 + 16, .x = 0 + 8 + 1, .tile_idx = 0, .flags = 0 },
