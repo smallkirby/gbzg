@@ -72,6 +72,8 @@ pub const Ppu = struct {
     bcps: u8,
     /// OCPS (Object Color Palette Specification)
     ocps: u8,
+    /// VBK (VRAM Bank)
+    vbk: u8,
 
     /// TODO
     cycles: u8,
@@ -80,6 +82,7 @@ pub const Ppu = struct {
     oam_dma: ?u16 = null,
 
     /// VRAM (Switchable Bank 0 for CGB)
+    /// cf: https://gbdev.io/pandocs/CGB_Registers.html#vram-banks
     vram1: []u8,
     /// VRAM (Switchable Bank 1 for CGB)
     vram2: []u8,
@@ -198,6 +201,7 @@ pub const Ppu = struct {
             .wly = 0,
             .bcps = 0,
             .ocps = 0,
+            .vbk = 0,
             .cycles = 20,
             .vram1 = &vram1[0],
             .vram2 = &vram2[0],
@@ -215,7 +219,10 @@ pub const Ppu = struct {
                     // cannot read VRAM during Drawing Mode
                     break :blk 0xFF;
                 } else {
-                    break :blk self.vram1[addr & 0x1FFF];
+                    break :blk if (self.vbk & 0b1 == 0)
+                        self.vram1[addr & 0x1FFF]
+                    else
+                        self.vram2[addr & 0x1FFF];
                 }
             },
             // OAM
@@ -239,7 +246,7 @@ pub const Ppu = struct {
             0xFF49 => self.obp1,
             0xFF4A => self.wy,
             0xFF4B => self.wx,
-            0xFF4F => unreachable, // VRAM Bank
+            0xFF4F => self.vbk | 0b1111_1110,
             0xFF51...0xFF55 => unreachable, // HDMA
             0xFF68 => self.bcps,
             // BCPD/BGPD
@@ -253,9 +260,11 @@ pub const Ppu = struct {
 
     pub fn write(self: *@This(), addr: u16, val: u8) void {
         switch (addr) {
-            0x8000...0x9FFF => if (self.mode != .Drawing) {
-                // cannot write VRAM during Drawing Mode
-                self.vram1[addr & 0x1FFF] = val;
+            0x8000...0x9FFF => if (self.mode != .Drawing) { // cannot write VRAM during Drawing Mode
+                if (self.vbk & 0b1 == 0)
+                    self.vram1[addr & 0x1FFF] = val
+                else
+                    self.vram2[addr & 0x1FFF] = val;
             },
             // OAM
             0xFE00...0xFE9F => if (self.mode != .OamScan and self.mode != .Drawing) {
@@ -275,7 +284,7 @@ pub const Ppu = struct {
             0xFF49 => self.obp1 = val,
             0xFF4A => self.wy = val,
             0xFF4B => self.wx = val,
-            0xFF4F => unreachable, // VRAM Bank
+            0xFF4F => self.vbk = val & 0b1,
             0xFF51...0xFF55 => unreachable, // HDMA
             0xFF68 => self.bcps = val,
             // BCPD/BGPD
