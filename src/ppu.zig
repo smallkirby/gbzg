@@ -535,7 +535,11 @@ pub const Ppu = struct {
         for (ordered_sprites) |sprite| {
             const Flags = Sprite.Flags;
 
-            const palette = if (sprite.flags & Flags.PALETTE != 0) self.obp1 else self.obp0;
+            const palette: u8 = if (self.is_cgb) b: {
+                break :b @truncate(sprite.flags);
+            } else b: {
+                break :b if (sprite.flags & Flags.PALETTE != 0) self.obp1 else self.obp0;
+            };
             var tile_idx: usize = @intCast(sprite.tile_idx);
             var row = if (sprite.flags & Flags.FLIP_Y != 0)
                 size - 1 - (self.ly -% sprite.y)
@@ -551,12 +555,30 @@ pub const Ppu = struct {
                     tile_idx,
                     @intCast(row),
                     @intCast(col_flipped),
-                    0,
+                    @intFromBool(sprite.flags & Flags.VRAM_BANK != 0 and self.is_cgb),
                 );
                 const i: usize = @intCast(sprite.x +% col);
-                if (i < LCD_INFO.width and pixel != 0) {
-                    if (sprite.flags & Flags.PRIORITY == 0 or !bg_prio[i][1]) {
-                        self.buffer[@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i] = switch ((palette >> ((@as(u3, pixel) * 2))) & 0b11) {
+                const flg =
+                    if (self.is_cgb)
+                    (self.lcdc & BG_WINDOW_ENABLE == 0) and
+                        (sprite.flags & Flags.PRIORITY == 0 and !bg_prio[i][0]) and
+                        bg_prio[i][1]
+                else
+                    sprite.flags & Flags.PRIORITY == 0 or !bg_prio[i][1];
+
+                if (i < LCD_INFO.width and pixel != 0 and flg) {
+                    if (self.is_cgb) {
+                        const colors = self.get_color_from_palette_mem(
+                            self.sprite_palette_mem,
+                            @intCast(palette),
+                            pixel,
+                        );
+                        for (colors, 0..) |color, j| {
+                            self.buffer[(@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i) * 4 + j] = color * 8 | color / 4;
+                        }
+                    } else {
+                        self.buffer[@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i] =
+                            switch ((@as(u8, palette) >> ((@as(u3, pixel) * 2))) & 0b11) {
                             0 => COLOR.WHITE,
                             1 => COLOR.LIGHT_GRAY,
                             2 => COLOR.DARK_GRAY,
