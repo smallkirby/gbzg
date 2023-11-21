@@ -466,7 +466,8 @@ pub const Ppu = struct {
                     pixel,
                 );
                 for (colors, 0..) |color, j| {
-                    self.buffer[(@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i) * 4 + j] = color * 8 | color / 4;
+                    self.buffer[(@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i) * 4 + j] =
+                        @truncate((@as(u16, color) * 8) | (@as(u16, color) / 4));
                 }
             } else {
                 self.buffer[@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i] = switch ((self.bgp >> ((@as(u3, pixel) * 2))) & 0b11) {
@@ -542,7 +543,8 @@ pub const Ppu = struct {
                     pixel,
                 );
                 for (colors, 0..) |color, j| {
-                    self.buffer[(@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i) * 4 + j] = color * 8 | color / 4;
+                    self.buffer[(@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i) * 4 + j] =
+                        @truncate(@as(u16, color) * 8 | @as(u16, color) / 4);
                 }
             } else {
                 self.buffer[@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i] = switch ((self.bgp >> ((@as(u3, pixel) * 2))) & 0b11) {
