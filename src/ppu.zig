@@ -80,6 +80,22 @@ pub const Ppu = struct {
 
     /// OAM DMA source address (address: 0xFF46)
     oam_dma: ?u16 = null,
+    /// VRAM DMA source (address: 0xFF51-0xFF52)
+    hdma_src: u16 = 0,
+    /// VRAM DMA destination (address: 0xFF53-0xFF54)
+    hdma_dst: u16 = 0,
+    /// HBlank DMA (address: 0xFF55, 7-th bit == 1)
+    hblank_dma: ?struct {
+        src: u16 = 0,
+        dst: u16 = 0,
+        len: u16 = 0,
+    } = null,
+    /// General Purpose DMA (address: 0xFF55, 7-th bit == 0)
+    general_purpose_dma: ?struct {
+        src: u16 = 0,
+        dst: u16 = 0,
+        len: u16 = 0,
+    } = null,
 
     /// VRAM (Switchable Bank 0 for CGB)
     /// cf: https://gbdev.io/pandocs/CGB_Registers.html#vram-banks
@@ -247,7 +263,11 @@ pub const Ppu = struct {
             0xFF4A => self.wy,
             0xFF4B => self.wx,
             0xFF4F => self.vbk | 0b1111_1110,
-            0xFF51...0xFF55 => unreachable, // HDMA
+            0xFF51...0xFF54 => unreachable, // HDMA 1-4 is write-only
+            0xFF55 => if (self.hblank_dma) |hd|
+                0b1000_0000 | @as(u8, @truncate(hd.len / 10 - 1))
+            else
+                0xFF,
             0xFF68 => self.bcps,
             // BCPD/BGPD
             0xFF69 => if (self.mode == .Drawing) 0xFF else self.bg_palette_mem[self.bcps & 0x3F],
@@ -285,7 +305,26 @@ pub const Ppu = struct {
             0xFF4A => self.wy = val,
             0xFF4B => self.wx = val,
             0xFF4F => self.vbk = val & 0b1,
-            0xFF51...0xFF55 => unreachable, // HDMA
+            0xFF51 => self.hdma_src = (self.hdma_src & 0x00F0) | @as(u16, val),
+            0xFF52 => self.hdma_src = (self.hdma_src & 0xFF00) | (@as(u16, val) << 8),
+            0xFF53 => self.hdma_dst = (self.hdma_dst & 0x00F0) | @as(u16, val),
+            0xFF54 => self.hdma_dst = (self.hdma_dst & 0xFF00) | (@as(u16, val) << 8),
+            // cf: https://gbdev.io/pandocs/CGB_Registers.html#ff55--hdma5-cgb-mode-only-vram-dma-lengthmodestart
+            0xFF55 => if (val & 0b1000_0000 == 0) {
+                // General Purpose DMA
+                self.general_purpose_dma = .{
+                    .src = self.hdma_src,
+                    .dst = self.hdma_dst,
+                    .len = @as(u16, val & 0b0111_1111) * 0x10 + 1,
+                };
+            } else {
+                // HBlank DMA
+                self.hblank_dma = .{
+                    .src = self.hdma_src,
+                    .dst = self.hdma_dst,
+                    .len = @as(u16, val & 0b0111_1111) * 0x10 + 1,
+                };
+            },
             0xFF68 => self.bcps = val,
             // BCPD/BGPD
             0xFF69 => if (self.mode != .Drawing) {
