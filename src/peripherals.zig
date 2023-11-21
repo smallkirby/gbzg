@@ -34,7 +34,13 @@ pub const Peripherals = struct {
             } else {
                 return self.cartridge.read(addr);
             },
-            0x0100...0x7FFF => self.cartridge.read(addr),
+            0x0100...0x01FF => self.cartridge.read(addr),
+            0x0200...0x08FF => if (self.bootrom.active and self.ppu.is_cgb) {
+                return self.bootrom.read(addr);
+            } else {
+                return self.cartridge.read(addr);
+            },
+            0x0900...0x7FFF => self.cartridge.read(addr),
             0x8000...0x9FFF => self.ppu.read(addr),
             0xA000...0xBFFF => self.cartridge.read(addr),
             0xC000...0xDFFF => self.wram.read(addr),

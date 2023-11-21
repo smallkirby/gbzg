@@ -198,7 +198,7 @@ pub const Ppu = struct {
         const vram1 = try gbzg.ppu_allocator.alloc([VRAM_SIZE]u8, 1);
         const vram2 = try gbzg.ppu_allocator.alloc([VRAM_SIZE]u8, 1);
         const oam = try gbzg.ppu_allocator.alloc([OAM_SIZE]u8, 1);
-        const buffer = try gbzg.ppu_allocator.alloc([LCD_INFO.pixels * 4]u8, 1); // *4 for RGBA
+        const buffer = try gbzg.ppu_allocator.alloc([LCD_INFO.pixels * 3]u8, 1); // *3 for RGB888
         const bg_palette_mem = try gbzg.ppu_allocator.alloc([0x40]u8, 1);
         const sprite_palette_mem = try gbzg.ppu_allocator.alloc([0x40]u8, 1);
         return .{
@@ -458,26 +458,26 @@ pub const Ppu = struct {
                 @intCast(col),
                 bank,
             );
+            bg_prio[i][0] = if (attr) |a| a.prio else false;
             bg_prio[i][1] = pixel != 0;
 
-            if (self.is_cgb) {
-                const colors = self.get_color_from_palette_mem(
+            const colors = if (self.is_cgb)
+                self.get_color_from_palette_mem(
                     self.bg_palette_mem,
-                    attr.?.color_palette,
+                    @intCast(attr.?.color_palette),
                     pixel,
-                );
-                for (colors, 0..) |color, j| {
-                    self.buffer[(@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i) * 4 + j] =
-                        @truncate((@as(u16, color) * 8) | (@as(u16, color) / 4));
-                }
-            } else {
-                self.buffer[@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i] = switch ((self.bgp >> ((@as(u3, pixel) * 2))) & 0b11) {
+                )
+            else
+                [_]u8{switch ((self.bgp >> ((@as(u3, pixel) * 2))) & 0b11) {
                     0 => COLOR.WHITE,
                     1 => COLOR.LIGHT_GRAY,
                     2 => COLOR.DARK_GRAY,
                     3 => COLOR.BLACK,
                     else => unreachable,
-                };
+                }} ** 3;
+
+            for (colors, 0..) |color, j| {
+                self.buffer[(@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i) * 3 + j] = color;
             }
         }
     }
@@ -535,26 +535,26 @@ pub const Ppu = struct {
                 @intCast(col),
                 bank,
             );
+            bg_prio[i][0] = if (attr) |a| a.prio else false;
             bg_prio[i][1] = pixel != 0;
 
-            if (self.is_cgb) {
-                const colors = self.get_color_from_palette_mem(
+            const colors = if (self.is_cgb)
+                self.get_color_from_palette_mem(
                     self.bg_palette_mem,
-                    attr.?.color_palette,
+                    @intCast(attr.?.color_palette),
                     pixel,
-                );
-                for (colors, 0..) |color, j| {
-                    self.buffer[(@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i) * 4 + j] =
-                        @truncate(@as(u16, color) * 8 | @as(u16, color) / 4);
-                }
-            } else {
-                self.buffer[@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i] = switch ((self.bgp >> ((@as(u3, pixel) * 2))) & 0b11) {
+                )
+            else
+                [_]u8{switch ((self.bgp >> ((@as(u3, pixel) * 2))) & 0b11) {
                     0 => COLOR.WHITE,
                     1 => COLOR.LIGHT_GRAY,
                     2 => COLOR.DARK_GRAY,
                     3 => COLOR.BLACK,
                     else => unreachable,
-                };
+                }} ** 3;
+
+            for (colors, 0..) |color, j| {
+                self.buffer[(@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i) * 3 + j] = color;
             }
         }
 
@@ -650,24 +650,23 @@ pub const Ppu = struct {
                     sprite.flags & Flags.PRIORITY == 0 or !bg_prio[i][1];
 
                 if (i < LCD_INFO.width and pixel != 0 and flg) {
-                    if (self.is_cgb) {
-                        const colors = self.get_color_from_palette_mem(
+                    const colors = if (self.is_cgb)
+                        self.get_color_from_palette_mem(
                             self.sprite_palette_mem,
                             @intCast(palette),
                             pixel,
-                        );
-                        for (colors, 0..) |color, j| {
-                            self.buffer[(@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i) * 4 + j] = color * 8 | color / 4;
-                        }
-                    } else {
-                        self.buffer[@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i] =
-                            switch ((@as(u8, palette) >> ((@as(u3, pixel) * 2))) & 0b11) {
+                        )
+                    else
+                        [_]u8{switch ((@as(u8, palette) >> ((@as(u3, pixel) * 2))) & 0b11) {
                             0 => COLOR.WHITE,
                             1 => COLOR.LIGHT_GRAY,
                             2 => COLOR.DARK_GRAY,
                             3 => COLOR.BLACK,
                             else => unreachable,
-                        };
+                        }} ** 3;
+
+                    for (colors, 0..) |color, j| {
+                        self.buffer[(@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i) * 3 + j] = color;
                     }
                 }
             }
@@ -701,7 +700,7 @@ pub const Ppu = struct {
         palette_mem: []u8,
         palette: u3,
         pixel: u8,
-    ) [4]u8 {
+    ) [3]u8 {
         const rgb555 =
             @as(u16, palette_mem[
             @as(usize, palette) * 8 + @as(usize, pixel) * 2
@@ -710,11 +709,10 @@ pub const Ppu = struct {
             @as(usize, palette) * 8 + @as(usize, pixel) * 2 + 1
         ]) << 8;
 
-        return [4]u8{
+        return [_]u8{
             @truncate(rgb555 & 0b0001_1111),
             @truncate((rgb555 >> 5) & 0b0001_1111),
             @truncate((rgb555 >> 10) & 0b0001_1111),
-            0xFF,
         };
     }
 
@@ -980,14 +978,14 @@ test "render_bg" {
     ppu.render_bg(&bg_prio);
 
     for (0..LCD_INFO.width / 8) |i| {
-        try expect(ppu.buffer[0 + i * 8] == C.BLACK);
-        try expect(ppu.buffer[1 + i * 8] == C.LIGHT_GRAY);
-        try expect(ppu.buffer[2 + i * 8] == C.LIGHT_GRAY);
-        try expect(ppu.buffer[3 + i * 8] == C.LIGHT_GRAY);
-        try expect(ppu.buffer[4 + i * 8] == C.DARK_GRAY);
-        try expect(ppu.buffer[5 + i * 8] == C.BLACK);
-        try expect(ppu.buffer[6 + i * 8] == C.BLACK);
-        try expect(ppu.buffer[7 + i * 8] == C.WHITE);
+        try expect(ppu.buffer[(0 + i * 8) * 3] == C.BLACK);
+        try expect(ppu.buffer[(1 + i * 8) * 3] == C.LIGHT_GRAY);
+        try expect(ppu.buffer[(2 + i * 8) * 3] == C.LIGHT_GRAY);
+        try expect(ppu.buffer[(3 + i * 8) * 3] == C.LIGHT_GRAY);
+        try expect(ppu.buffer[(4 + i * 8) * 3] == C.DARK_GRAY);
+        try expect(ppu.buffer[(5 + i * 8) * 3] == C.BLACK);
+        try expect(ppu.buffer[(6 + i * 8) * 3] == C.BLACK);
+        try expect(ppu.buffer[(7 + i * 8) * 3] == C.WHITE);
     }
 }
 
