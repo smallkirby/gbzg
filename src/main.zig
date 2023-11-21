@@ -95,7 +95,10 @@ fn dump_vram_if_necessary() void {
             return;
         };
         defer file.close();
-        _ = file.write(vram) catch |e| {
+
+        const size =
+            if (saved_gb.?.peripherals.ppu.is_cgb) gbzg.LCD_INFO.pixels * 4 else gbzg.LCD_INFO.pixels;
+        _ = file.write(vram[0..size]) catch |e| {
             std.log.err("Failed to write to file: {}\n", .{e});
             return;
         };
