@@ -2,7 +2,7 @@ const gbzg = @import("gbzg.zig");
 
 pub const HRam = struct {
     pub const size = 0x80;
-    ram: []u8,
+    ram: *[size]u8,
 
     pub fn new() !HRam {
         const ram = try gbzg.hram_allocator.alloc([HRam.size]u8, 1);
@@ -38,7 +38,7 @@ test "HRAM cleared" {
 }
 
 test "HRAM size" {
-    //try expect(@sizeOf(HRam) == 0x10);
+    try expect(@sizeOf(HRam) == 0x8);
 }
 
 test "HRAM simple IO" {
