@@ -707,7 +707,7 @@ pub const Ppu = struct {
         ]) |
             @as(u16, palette_mem[
             @as(usize, palette) * 8 + @as(usize, pixel) * 2 + 1
-        ]);
+        ]) << 8;
 
         return [4]u8{
             @truncate(rgb555 & 0b0001_1111),
