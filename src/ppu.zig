@@ -265,7 +265,7 @@ pub const Ppu = struct {
             0xFF4F => self.vbk | 0b1111_1110,
             0xFF51...0xFF54 => unreachable, // HDMA 1-4 is write-only
             0xFF55 => if (self.hblank_dma) |hd|
-                0b1000_0000 | @as(u8, @truncate(hd.len / 10 - 1))
+                0b1000_0000 | @as(u8, @truncate(hd.len / 0x10 - 1))
             else
                 0xFF,
             0xFF68 => self.bcps,
@@ -743,21 +743,21 @@ pub const Ppu = struct {
 
     /// Emulate 1-cycle of HBlank DMA.
     /// In this DMA, data is transferred 10 bytes per M-cycle.
-    pub fn hblank_dma_emulate_cycle(self: *@This(), data: [10]u8) void {
+    pub fn hblank_dma_emulate_cycle(self: *@This(), data: [0x10]u8) void {
         if (self.is_cgb == false) {
             return;
         }
         if (self.hblank_dma) |dma| {
-            for (0..10) |i| {
+            for (0..0x10) |i| {
                 if (self.vbk & 0b1 == 0) {
                     self.vram1[dma.dst + i] = data[i];
                 } else {
                     self.vram2[dma.dst + i] = data[i];
                 }
             }
-            self.hblank_dma.?.src += 10;
-            self.hblank_dma.?.dst += 10;
-            self.hblank_dma.?.len -|= 10;
+            self.hblank_dma.?.src += 0x10;
+            self.hblank_dma.?.dst += 0x10;
+            self.hblank_dma.?.len -|= 0x10;
             if (self.hblank_dma.?.len <= 0) {
                 self.hblank_dma = null;
             }

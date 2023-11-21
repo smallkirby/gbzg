@@ -94,8 +94,8 @@ pub const GameBoy = struct {
                 }
                 if (self.peripherals.ppu.is_cgb) {
                     if (self.peripherals.ppu.hblank_dma) |dma| {
-                        var data: [10]u8 = [_]u8{0} ** 10;
-                        for (0..10) |i| {
+                        var data: [0x10]u8 = [_]u8{0} ** 0x10;
+                        for (0..0x10) |i| {
                             data[i] = self.peripherals.read(
                                 &self.cpu.interrupts,
                                 @truncate(dma.src + i),
