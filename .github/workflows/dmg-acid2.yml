@@ -58,4 +58,4 @@ jobs:
               --cart=./dmg-acid2.gb \
               --dump_vram=./test.vram \
           || true
-          diff <(xxd ./test.vram) <(./tests/assets/dmg-acid2.vram)
+          diff -s --suppress-common-lines <(xxd ./test.vram) <(./tests/assets/dmg-acid2.vram)
