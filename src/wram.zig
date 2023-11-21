@@ -11,13 +11,13 @@ pub const WRam = struct {
     /// Number of banks in WRAM. (CGB only)
     pub const BANK_NUM = 8;
 
-    rams: [8][size]u8,
+    rams: [*][size]u8,
     svbk: u8 = 0,
 
     pub fn new() !WRam {
-        const ram = try gbzg.wram_allocator.alloc([WRam.size]u8, BANK_NUM);
+        const ram: [*][size]u8 = @ptrCast(try gbzg.wram_allocator.alloc(u8, BANK_NUM * size));
         var wram = WRam{
-            .rams = ram[0..BANK_NUM].*,
+            .rams = ram,
         };
         wram.clear();
         return wram;
@@ -52,6 +52,10 @@ pub const WRam = struct {
 
 const expect = @import("std").testing.expect;
 const memEql = @import("std").mem.eql;
+
+test "WRAM size" {
+    try expect(@sizeOf(WRam) == 0x10);
+}
 
 test "WRAM cleared" {
     const wram = try WRam.new();

@@ -37,6 +37,10 @@ test "HRAM cleared" {
     try expect(memEql(u8, hram.ram, &all_zero));
 }
 
+test "HRAM size" {
+    //try expect(@sizeOf(HRam) == 0x10);
+}
+
 test "HRAM simple IO" {
     const hram = try HRam.new();
 
