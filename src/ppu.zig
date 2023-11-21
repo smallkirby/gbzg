@@ -79,10 +79,10 @@ pub const Ppu = struct {
     vram1: []u8,
     /// VRAM (Switchable Bank 1 for CGB)
     vram2: []u8,
-    /// bg palette memory
+    /// bg and window palette memory
     bg_palette_mem: []u8,
     /// window palette memory
-    window_palette_mem: []u8,
+    sprite_palette_mem: []u8,
     /// OAM (Object Attribute Memory)
     oam: [OAM_SIZE]u8,
     /// LCD buffer
@@ -177,7 +177,7 @@ pub const Ppu = struct {
         const oam = try gbzg.ppu_allocator.alloc([OAM_SIZE]u8, 1);
         const buffer = try gbzg.ppu_allocator.alloc([LCD_INFO.pixels * 4]u8, 1); // *4 for RGBA
         const bg_palette_mem = try gbzg.ppu_allocator.alloc([0x40]u8, 1);
-        const window_palette_mem = try gbzg.ppu_allocator.alloc([0x40]u8, 1);
+        const sprite_palette_mem = try gbzg.ppu_allocator.alloc([0x40]u8, 1);
         return .{
             .mode = .OamScan,
             .lcdc = 0,
@@ -196,7 +196,7 @@ pub const Ppu = struct {
             .vram1 = &vram1[0],
             .vram2 = &vram2[0],
             .bg_palette_mem = &bg_palette_mem[0],
-            .window_palette_mem = &window_palette_mem[0],
+            .sprite_palette_mem = &sprite_palette_mem[0],
             .oam = oam[0],
             .buffer = &buffer[0],
         };
@@ -412,6 +412,7 @@ pub const Ppu = struct {
 
         var wly_add: u8 = 0;
         const y = self.wly;
+
         for (0..LCD_INFO.width) |i| {
             const x_res = @subWithOverflow(@as(u8, @truncate(i)), self.wx -% 7);
             if (x_res[1] != 0) {
@@ -425,22 +426,53 @@ pub const Ppu = struct {
                 x_res[0] / TileInfo.WIDTH,
             );
 
+            const attr = self.get_bg_attr(
+                @intFromBool((self.lcdc & BG_TILE_MAP) != 0),
+                y / TileInfo.HEIGHT,
+                x_res[0] / TileInfo.WIDTH,
+            );
+            const row: u8 = if (attr) |a| b: {
+                if (a.flip_y) {
+                    break :b TileInfo.HEIGHT - 1 - (y % TileInfo.HEIGHT);
+                } else {
+                    break :b y % TileInfo.HEIGHT;
+                }
+            } else y % TileInfo.HEIGHT;
+            const col: u8 = if (attr) |a| b: {
+                if (a.flip_x) {
+                    break :b TileInfo.WIDTH - 1 - (x_res[0] % TileInfo.WIDTH);
+                } else {
+                    break :b x_res[0] % TileInfo.WIDTH;
+                }
+            } else x_res[0] % TileInfo.WIDTH;
+            const bank = if (attr) |a| @intFromBool(a.vram_bank != 0) else 0;
+
             const pixel = self.get_pixel_from_tile(
                 tile_idx,
-                @intCast(y % TileInfo.HEIGHT),
-                @intCast(x_res[0] % TileInfo.WIDTH),
-                0,
+                @intCast(row),
+                @intCast(col),
+                bank,
             );
-
-            self.buffer[@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i] = switch ((self.bgp >> ((@as(u3, pixel) * 2))) & 0b11) {
-                0 => COLOR.WHITE,
-                1 => COLOR.LIGHT_GRAY,
-                2 => COLOR.DARK_GRAY,
-                3 => COLOR.BLACK,
-                else => unreachable,
-            };
-
             bg_prio[i][1] = pixel != 0;
+
+            if (self.is_cgb) {
+                const colors = self.get_color_from_palette_mem(
+                    self.bg_palette_mem,
+                    attr.?.color_palette,
+                    pixel,
+                );
+                for (colors, 0..) |color, j| {
+                    self.buffer[(@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i) * 4 + j] = color * 8 | color / 4;
+                }
+            } else {
+                self.buffer[@as(usize, LCD_INFO.width) *| @as(usize, self.ly) + i] = switch ((self.bgp >> ((@as(u3, pixel) * 2))) & 0b11) {
+                    0 => COLOR.WHITE,
+                    1 => COLOR.LIGHT_GRAY,
+                    2 => COLOR.DARK_GRAY,
+                    3 => COLOR.BLACK,
+                    else => unreachable,
+                };
+            }
         }
 
         self.wly += wly_add;
