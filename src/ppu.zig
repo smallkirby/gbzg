@@ -68,6 +68,10 @@ pub const Ppu = struct {
     /// Window's Y position must be incremented only when window is enabled and rendered.
     /// This internal register is used to keep track of window's Y position.
     wly: u8,
+    /// BCPS (Background Color Palette Specification)
+    bcps: u8,
+    /// OCPS (Object Color Palette Specification)
+    ocps: u8,
 
     /// TODO
     cycles: u8,
@@ -192,6 +196,8 @@ pub const Ppu = struct {
             .wy = 0,
             .wx = 0,
             .wly = 0,
+            .bcps = 0,
+            .ocps = 0,
             .cycles = 20,
             .vram1 = &vram1[0],
             .vram2 = &vram2[0],
@@ -233,6 +239,14 @@ pub const Ppu = struct {
             0xFF49 => self.obp1,
             0xFF4A => self.wy,
             0xFF4B => self.wx,
+            0xFF4F => unreachable, // VRAM Bank
+            0xFF51...0xFF55 => unreachable, // HDMA
+            0xFF68 => self.bcps,
+            // BCPD/BGPD
+            0xFF69 => if (self.mode == .Drawing) 0xFF else self.bg_palette_mem[self.bcps & 0x3F],
+            0xFF6A => self.ocps,
+            // OCPD/OBPD
+            0xFF6B => if (self.mode == .Drawing) 0xFF else self.sprite_palette_mem[self.ocps & 0x3F],
             else => unreachable,
         };
     }
@@ -261,6 +275,24 @@ pub const Ppu = struct {
             0xFF49 => self.obp1 = val,
             0xFF4A => self.wy = val,
             0xFF4B => self.wx = val,
+            0xFF4F => unreachable, // VRAM Bank
+            0xFF51...0xFF55 => unreachable, // HDMA
+            0xFF68 => self.bcps = val,
+            // BCPD/BGPD
+            0xFF69 => if (self.mode != .Drawing) {
+                self.bg_palette_mem[self.bcps & 0x3F] = val;
+                if (self.bcps & 0x80 != 0) {
+                    self.bcps = (self.bcps & 0xC0) | ((self.bcps + 1) & 0x3F);
+                }
+            },
+            0xFF6A => self.ocps = val,
+            // OCPD/OBPD
+            0xFF6B => if (self.mode != .Drawing) {
+                self.sprite_palette_mem[self.ocps & 0x3F] = val;
+                if (self.ocps & 0x80 != 0) {
+                    self.ocps = (self.ocps & 0xC0) | ((self.ocps + 1) & 0x3F);
+                }
+            },
             else => unreachable,
         }
     }
