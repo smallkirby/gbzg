@@ -739,6 +739,52 @@ pub const Ppu = struct {
         }
     }
 
+    /// Emulate 1-cycle of HBlank DMA.
+    /// In this DMA, data is transferred 10 bytes per M-cycle.
+    pub fn hblank_dma_emulate_cycle(self: *@This(), data: [10]u8) void {
+        if (self.is_cgb == false) {
+            return;
+        }
+        if (self.hblank_dma) |dma| {
+            for (0..10) |i| {
+                if (self.vbk & 0b1 == 0) {
+                    self.vram1[dma.dst + i] = data[i];
+                } else {
+                    self.vram2[dma.dst + i] = data[i];
+                }
+            }
+            self.hblank_dma.?.src += 10;
+            self.hblank_dma.?.dst += 10;
+            self.hblank_dma.?.len -|= 10;
+            if (self.hblank_dma.?.len <= 0) {
+                self.hblank_dma = null;
+            }
+        }
+    }
+
+    /// Emulate 1-cycle of General Purpose DMA.
+    /// In this DMA, all data is transferred at once.
+    pub fn general_purpose_dma_emulate_cycle(
+        self: *@This(),
+        data: []u8,
+    ) void {
+        if (self.is_cgb == false) {
+            return;
+        }
+        if (self.general_purpose_dma) |dma| {
+            if (dma.dst < 0x8000 or dma.dst + dma.len > 0x8000 + VRAM_SIZE) {
+                std.log.err("Invalid General Purpose DMA destination address: 0x{X:0>4}", .{dma.dst});
+                unreachable;
+            }
+            if (self.vbk & 0b1 == 0) {
+                @memcpy(self.vram1[dma.dst .. dma.dst + dma.len], data);
+            } else {
+                @memcpy(self.vram2[dma.dst .. dma.dst + dma.len], data);
+            }
+        }
+        self.general_purpose_dma = null;
+    }
+
     /// Emulate single M-cycle.
     /// Return true if VBlank is emitted.
     pub fn emulate_cycle(self: *@This(), intrs: *Interrupts) bool {

@@ -92,6 +92,28 @@ pub const GameBoy = struct {
                         self.peripherals.read(&self.cpu.interrupts, addr),
                     );
                 }
+                if (self.peripherals.ppu.is_cgb) {
+                    if (self.peripherals.ppu.hblank_dma) |dma| {
+                        var data: [10]u8 = [_]u8{0} ** 10;
+                        for (0..10) |i| {
+                            data[i] = self.peripherals.read(
+                                &self.cpu.interrupts,
+                                @truncate(dma.src + i),
+                            );
+                        }
+                        self.peripherals.ppu.hblank_dma_emulate_cycle(data);
+                    }
+                    if (self.peripherals.ppu.general_purpose_dma) |dma| {
+                        var data = try default_allocator.alloc(u8, dma.len);
+                        for (0..dma.len) |i| {
+                            data[i] = self.peripherals.read(
+                                &self.cpu.interrupts,
+                                @truncate(dma.src + i),
+                            );
+                        }
+                        self.peripherals.ppu.general_purpose_dma_emulate_cycle(data);
+                    }
+                }
                 if (self.peripherals.ppu.emulate_cycle(&self.cpu.interrupts)) {
                     try self.lcd.draw(self.peripherals.ppu.buffer);
                 }
