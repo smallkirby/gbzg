@@ -624,7 +624,7 @@ pub const Ppu = struct {
             const Flags = Sprite.Flags;
 
             const palette: u8 = if (self.is_cgb) b: {
-                break :b @truncate(sprite.flags);
+                break :b @truncate(sprite.flags & 0b111);
             } else b: {
                 break :b if (sprite.flags & Flags.PALETTE != 0) self.obp1 else self.obp0;
             };
@@ -643,13 +643,13 @@ pub const Ppu = struct {
                     tile_idx,
                     @intCast(row),
                     @intCast(col_flipped),
-                    @intFromBool(sprite.flags & Flags.VRAM_BANK != 0 and self.is_cgb),
+                    @intFromBool((sprite.flags & Flags.VRAM_BANK) != 0 and self.is_cgb),
                 );
                 const i: usize = @intCast(sprite.x +% col);
                 const flg =
                     if (self.is_cgb)
-                    (self.lcdc & BG_WINDOW_ENABLE == 0) and
-                        (sprite.flags & Flags.PRIORITY == 0 and !bg_prio[i][0]) and
+                    (self.lcdc & BG_WINDOW_ENABLE == 0) or
+                        (sprite.flags & Flags.PRIORITY == 0 and !bg_prio[i][0]) or
                         bg_prio[i][1]
                 else
                     sprite.flags & Flags.PRIORITY == 0 or !bg_prio[i][1];
