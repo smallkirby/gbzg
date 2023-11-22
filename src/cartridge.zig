@@ -7,6 +7,7 @@ pub const Cartridge = struct {
     rom: []u8,
     sram: []u8,
     mbc: Mbc,
+    header: CartridgeHeader,
 
     pub fn new(rom: []u8) !@This() {
         const header = CartridgeHeader.from_bytes(rom[0x100..0x150].*);
@@ -33,6 +34,7 @@ pub const Cartridge = struct {
             .rom = rom,
             .sram = sram,
             .mbc = mbc,
+            .header = header,
         };
     }
 

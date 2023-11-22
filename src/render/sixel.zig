@@ -14,7 +14,8 @@ const c = @cImport({
 pub const Sixel = struct {
     sixel_output: ?*sixel.sixel_output_t align(64),
     sixel_dither: ?*sixel.sixel_dither_t align(64),
-    buffer: [LCD_INFO.pixels]u8,
+    sixel_encoder: ?*sixel.sixel_encoder align(64),
+    buffer: [LCD_INFO.pixels * 3]u8, // *3 for RGB888
     old_termios: ?c.termios,
 
     options: Options,
@@ -26,11 +27,12 @@ pub const Sixel = struct {
     };
 
     pub fn new(options: Options) !@This() {
-        const buffer = try gbzg.default_allocator.alloc([LCD_INFO.pixels]u8, 1);
+        const buffer = try gbzg.default_allocator.alloc([LCD_INFO.pixels * 3]u8, 1);
 
         var ret = @This(){
             .sixel_output = null,
             .sixel_dither = null,
+            .sixel_encoder = null,
             .buffer = buffer[0],
             .old_termios = null,
             .options = options,
@@ -41,6 +43,7 @@ pub const Sixel = struct {
             try ret.output_new();
             try ret.dither_get();
             try ret.dither_set_pixelformat();
+            try ret.create_encoder();
         }
 
         return ret;
@@ -48,7 +51,10 @@ pub const Sixel = struct {
 
     fn output_new(self: *@This()) SixelErrors!void {
         const status = sixel.sixel_output_new(
-            @as([*c]?*sixel.sixel_output_t, @ptrCast(&self.sixel_output)),
+            @as(
+                [*c]?*sixel.sixel_output_t,
+                @ptrCast(&self.sixel_output),
+            ),
             sixel_write,
             c.stdout,
             null,
@@ -60,11 +66,15 @@ pub const Sixel = struct {
     }
 
     fn dither_get(self: *@This()) SixelErrors!void {
-        self.sixel_dither = sixel.sixel_dither_get(sixel.SIXEL_BUILTIN_G8);
+        self.sixel_dither = sixel.sixel_dither_get(sixel.SIXEL_BUILTIN_XTERM256);
     }
 
     fn dither_set_pixelformat(self: *@This()) SixelErrors!void {
-        sixel.sixel_dither_set_pixelformat(self.sixel_dither, sixel.SIXEL_PIXELFORMAT_G8);
+        sixel.sixel_dither_set_pixelformat(self.sixel_dither, sixel.SIXEL_PIXELFORMAT_RGB888);
+    }
+
+    fn create_encoder(self: *@This()) SixelErrors!void {
+        self.sixel_encoder = sixel.sixel_encoder_create();
     }
 
     pub fn draw(self: *@This(), pixels: []u8) SixelErrors!void {
@@ -74,7 +84,7 @@ pub const Sixel = struct {
 
         self.scroll_to_top();
 
-        for (0..LCD_INFO.pixels) |i| {
+        for (0..LCD_INFO.pixels * 3) |i| {
             self.buffer[i] = pixels[i];
         }
 

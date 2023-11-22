@@ -10,22 +10,7 @@ const c = @cImport({
     @cInclude("signal.h");
 });
 
-fn read_bootrom(path: [:0]const u8) ![256]u8 {
-    var f = try std.fs.cwd().openFile(path, .{});
-    defer f.close();
-
-    var reader = std.io.bufferedReader(f.reader());
-    var in_stream = reader.reader();
-
-    var buf: [256]u8 = undefined;
-    if (try in_stream.read(buf[0..]) != 256) {
-        unreachable;
-    }
-
-    return buf;
-}
-
-fn read_cartridge(path: [:0]const u8) ![]u8 {
+fn read_image(path: [:0]const u8) ![]u8 {
     var f = try std.fs.cwd().openFile(path, .{});
     defer f.close();
 
@@ -53,6 +38,8 @@ fn parse_args() !Options {
         } else if (std.mem.startsWith(u8, arg, "--exit_at=")) {
             const s = arg["--exit_at=".len..];
             options.exit_at = try std.fmt.parseInt(u16, s, 16);
+        } else if (std.mem.eql(u8, arg, "--color")) {
+            options.color = true;
         } else if (std.mem.startsWith(u8, arg, "--dump_vram=")) {
             options.vram_dump_path = arg["--dump_vram=".len..];
         } else {
@@ -79,11 +66,21 @@ fn set_signal_handler(f: *const fn (c_int) callconv(.C) void) !void {
 
 var saved_gb: ?*GameBoy = null;
 
+fn graceful_exit_prepare() void {
+    if (saved_gb) |gb| {
+        gb.deinit() catch {
+            std.log.err("Failed to deinit GameBoy\n", .{});
+        };
+        gb.cpu.debug_print_regs();
+        dump_vram_if_necessary();
+    } else {
+        std.log.err("GameBoy is not initialized\n", .{});
+    }
+}
+
 fn signal_handler(sig: c_int) callconv(.C) void {
-    saved_gb.?.deinit() catch unreachable;
+    graceful_exit_prepare();
     std.log.info("Received signal: 0x{X}\n", .{sig});
-    saved_gb.?.cpu.debug_print_regs();
-    dump_vram_if_necessary();
     std.os.exit(1);
 }
 
@@ -95,7 +92,10 @@ fn dump_vram_if_necessary() void {
             return;
         };
         defer file.close();
-        _ = file.write(vram) catch |e| {
+
+        const size =
+            if (saved_gb.?.peripherals.ppu.is_cgb) gbzg.LCD_INFO.pixels * 3 else gbzg.LCD_INFO.pixels;
+        _ = file.write(vram[0..size]) catch |e| {
             std.log.err("Failed to write to file: {}\n", .{e});
             return;
         };
@@ -106,14 +106,14 @@ fn dump_vram_if_necessary() void {
 
 fn start(options: Options) !void {
     // Setup BootROM
-    var bootrom_bytes = try read_bootrom(options.bootrom_path.?);
-    const bootrom = Bootrom.new(&bootrom_bytes);
+    var bootrom_bytes = try read_image(options.bootrom_path.?);
+    const bootrom = Bootrom.new(bootrom_bytes);
 
     // Initialize Cartridge
     var cartridge = if (options.boot_only) b: {
         break :b try Cartridge.debug_new();
     } else b: {
-        const cart_img = try read_cartridge(options.cartridge_path.?);
+        const cart_img = try read_image(options.cartridge_path.?);
         break :b try Cartridge.new(cart_img);
     };
 
@@ -140,6 +140,17 @@ fn start(options: Options) !void {
         dump_vram_if_necessary();
         unreachable;
     };
+}
+
+pub fn panic(
+    message: []const u8,
+    trace: ?*std.builtin.StackTrace,
+    ret_addr: ?usize,
+) noreturn {
+    graceful_exit_prepare();
+    std.log.err("PANIC: {s}\n", .{message});
+
+    std.builtin.default_panic(message, trace, ret_addr);
 }
 
 pub fn main() !void {

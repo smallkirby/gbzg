@@ -34,6 +34,8 @@ pub const Options = struct {
     exit_at: ?u16 = null,
     /// Dump VRAM to this file.
     vram_dump_path: ?[:0]const u8 = null,
+    /// GameBoy Color mode.
+    color: bool = false,
 };
 
 pub const GameBoy = struct {
@@ -47,7 +49,15 @@ pub const GameBoy = struct {
     const M_CYCLE_NANOS: u128 = M_CYCLE_CLOCK * 1_000_000_000 / CPU_CLOCK_HZ;
 
     pub fn new(bootrom: Bootrom, cartdige: Cartridge, renderer: Renderer, options: Options) !@This() {
-        const peripherals = try Peripherals.new(bootrom, cartdige);
+        const color = if (options.color == false and cartdige.header.cgb_flag == 0xC0) b: {
+            std.log.info("GameBoy Color cartridge detected. Switching to color mode...", .{});
+            break :b true;
+        } else options.color;
+        const peripherals = try Peripherals.new(
+            bootrom,
+            cartdige,
+            color,
+        );
         const lcd = try LCD.new(renderer);
         const cpu = Cpu.new();
 
@@ -64,7 +74,7 @@ pub const GameBoy = struct {
     }
 
     pub fn run(self: *@This()) !void {
-        dprint("Start Running...\n", .{});
+        std.log.info("Start Running...", .{});
 
         var timer = try std.time.Timer.start();
         var elapsed: u128 = 0;
@@ -92,6 +102,28 @@ pub const GameBoy = struct {
                         self.peripherals.read(&self.cpu.interrupts, addr),
                     );
                 }
+                if (self.peripherals.ppu.is_cgb) {
+                    if (self.peripherals.ppu.hblank_dma) |dma| {
+                        var data: [0x10]u8 = [_]u8{0} ** 0x10;
+                        for (0..0x10) |i| {
+                            data[i] = self.peripherals.read(
+                                &self.cpu.interrupts,
+                                @truncate(dma.src + i),
+                            );
+                        }
+                        self.peripherals.ppu.hblank_dma_emulate_cycle(data);
+                    }
+                    if (self.peripherals.ppu.general_purpose_dma) |dma| {
+                        var data = try default_allocator.alloc(u8, dma.len);
+                        for (0..dma.len) |i| {
+                            data[i] = self.peripherals.read(
+                                &self.cpu.interrupts,
+                                @truncate(dma.src + i),
+                            );
+                        }
+                        self.peripherals.ppu.general_purpose_dma_emulate_cycle(data);
+                    }
+                }
                 if (self.peripherals.ppu.emulate_cycle(&self.cpu.interrupts)) {
                     try self.lcd.draw(self.peripherals.ppu.buffer);
                 }
@@ -101,5 +133,3 @@ pub const GameBoy = struct {
         }
     }
 };
-
-const dprint = @import("std").debug.print;

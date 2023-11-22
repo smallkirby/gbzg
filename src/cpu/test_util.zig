@@ -5,10 +5,10 @@ const Cartridge = @import("../cartridge.zig").Cartridge;
 
 pub fn t_init_peripherals() !Peripherals {
     const Bootrom = @import("../bootrom.zig").Bootrom;
-    var img = [_]u8{ 0x00, 0x00 };
+    var img = [_]u8{0x00} ** 0x100;
     const bootram = Bootrom.new(&img);
     const cart = try Cartridge.debug_new();
-    var peripherals = try Peripherals.new(bootram, cart);
+    var peripherals = try Peripherals.new(bootram, cart, false);
 
     return peripherals;
 }

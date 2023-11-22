@@ -3,6 +3,7 @@
 
 /dmg_bootrom.bin
 /*.gb
+/*.gbc
 /*.bin
 /*.vram
 /log

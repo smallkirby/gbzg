@@ -11,6 +11,10 @@ on:
     branches:
       - master
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   test:
     name: mem_timing2
@@ -54,4 +58,4 @@ jobs:
               --cart=./mem_timing2.gb \
               --dump_vram=./test.vram \
           || true
-          diff ./test.vram ./tests/assets/mem_timing2.vram
+          diff <(./test.vram) <(./tests/assets/mem_timing2.vram)
