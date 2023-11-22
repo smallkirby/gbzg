@@ -10,22 +10,7 @@ const c = @cImport({
     @cInclude("signal.h");
 });
 
-fn read_bootrom(path: [:0]const u8) ![256]u8 {
-    var f = try std.fs.cwd().openFile(path, .{});
-    defer f.close();
-
-    var reader = std.io.bufferedReader(f.reader());
-    var in_stream = reader.reader();
-
-    var buf: [256]u8 = undefined;
-    if (try in_stream.read(buf[0..]) != 256) {
-        unreachable;
-    }
-
-    return buf;
-}
-
-fn read_cartridge(path: [:0]const u8) ![]u8 {
+fn read_image(path: [:0]const u8) ![]u8 {
     var f = try std.fs.cwd().openFile(path, .{});
     defer f.close();
 
@@ -121,14 +106,14 @@ fn dump_vram_if_necessary() void {
 
 fn start(options: Options) !void {
     // Setup BootROM
-    var bootrom_bytes = try read_bootrom(options.bootrom_path.?);
-    const bootrom = Bootrom.new(&bootrom_bytes);
+    var bootrom_bytes = try read_image(options.bootrom_path.?);
+    const bootrom = Bootrom.new(bootrom_bytes);
 
     // Initialize Cartridge
     var cartridge = if (options.boot_only) b: {
         break :b try Cartridge.debug_new();
     } else b: {
-        const cart_img = try read_cartridge(options.cartridge_path.?);
+        const cart_img = try read_image(options.cartridge_path.?);
         break :b try Cartridge.new(cart_img);
     };
 

@@ -1,9 +1,13 @@
+const std = @import("std");
+
 pub const Bootrom = struct {
-    rom: [*]u8,
+    rom: []u8,
     active: bool = true,
 
-    pub fn new(rom: [*]u8) Bootrom {
-        return Bootrom{ .rom = rom };
+    pub fn new(rom: []u8) Bootrom {
+        return Bootrom{
+            .rom = rom,
+        };
     }
 
     pub fn read(self: Bootrom, addr: u16) u8 {
