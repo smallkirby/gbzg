@@ -81,11 +81,21 @@ fn set_signal_handler(f: *const fn (c_int) callconv(.C) void) !void {
 
 var saved_gb: ?*GameBoy = null;
 
+fn graceful_exit_prepare() void {
+    if (saved_gb) |gb| {
+        gb.deinit() catch {
+            std.log.err("Failed to deinit GameBoy\n", .{});
+        };
+        gb.cpu.debug_print_regs();
+        dump_vram_if_necessary();
+    } else {
+        std.log.err("GameBoy is not initialized\n", .{});
+    }
+}
+
 fn signal_handler(sig: c_int) callconv(.C) void {
-    saved_gb.?.deinit() catch unreachable;
+    graceful_exit_prepare();
     std.log.info("Received signal: 0x{X}\n", .{sig});
-    saved_gb.?.cpu.debug_print_regs();
-    dump_vram_if_necessary();
     std.os.exit(1);
 }
 
@@ -145,6 +155,17 @@ fn start(options: Options) !void {
         dump_vram_if_necessary();
         unreachable;
     };
+}
+
+pub fn panic(
+    message: []const u8,
+    trace: ?*std.builtin.StackTrace,
+    ret_addr: ?usize,
+) noreturn {
+    graceful_exit_prepare();
+    std.log.err("PANIC: {s}\n", .{message});
+
+    std.builtin.default_panic(message, trace, ret_addr);
 }
 
 pub fn main() !void {
