@@ -309,24 +309,24 @@ pub const Ppu = struct {
             0xFF4A => self.wy = val,
             0xFF4B => self.wx = val,
             0xFF4F => self.vbk = val & 0b1,
-            0xFF51 => self.hdma_src = (self.hdma_src & 0x00F0) | @as(u16, val),
-            0xFF52 => self.hdma_src = (self.hdma_src & 0xFF00) | (@as(u16, val) << 8),
-            0xFF53 => self.hdma_dst = (self.hdma_dst & 0x00F0) | @as(u16, val),
-            0xFF54 => self.hdma_dst = (self.hdma_dst & 0xFF00) | (@as(u16, val) << 8),
+            0xFF51 => self.hdma_src = (self.hdma_src & 0x00F0) | (@as(u16, val) << 8),
+            0xFF52 => self.hdma_src = (self.hdma_src & 0xFF00) | @as(u16, val),
+            0xFF53 => self.hdma_dst = (self.hdma_dst & 0x00F0) | (@as(u16, val) << 8),
+            0xFF54 => self.hdma_dst = (self.hdma_dst & 0xFF00) | @as(u16, val),
             // cf: https://gbdev.io/pandocs/CGB_Registers.html#ff55--hdma5-cgb-mode-only-vram-dma-lengthmodestart
             0xFF55 => if (val & 0b1000_0000 == 0) {
                 // General Purpose DMA
                 self.general_purpose_dma = .{
                     .src = self.hdma_src,
-                    .dst = self.hdma_dst,
-                    .len = @as(u16, val & 0b0111_1111) * 0x10 + 1,
+                    .dst = self.hdma_dst & 0b0001_1111_1111_0000, // only 12-4 bits are respected
+                    .len = @as(u16, (val & 0b0111_1111) + 1) * 0x10,
                 };
             } else {
                 // HBlank DMA
                 self.hblank_dma = .{
                     .src = self.hdma_src,
-                    .dst = self.hdma_dst,
-                    .len = @as(u16, val & 0b0111_1111) * 0x10 + 1,
+                    .dst = self.hdma_dst & 0b0001_1111_1111_0000, // only 12-4 bits are respected
+                    .len = @as(u16, (val & 0b0111_1111) + 1) * 0x10,
                 };
             },
             0xFF68 => self.bcps = val,
@@ -784,7 +784,8 @@ pub const Ppu = struct {
             return;
         }
         if (self.general_purpose_dma) |dma| {
-            if (dma.dst < 0x8000 or dma.dst + dma.len > 0x8000 + VRAM_SIZE) {
+            const base = 0x8000; // VRAM
+            if (base + dma.dst < 0x8000 or base + dma.dst + dma.len > 0x8000 + VRAM_SIZE) {
                 std.log.err("Invalid General Purpose DMA destination address: 0x{X:0>4}", .{dma.dst});
                 unreachable;
             }
