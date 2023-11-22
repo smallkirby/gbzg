@@ -491,7 +491,7 @@ pub const Ppu = struct {
     /// - Window fetches data from (0, 0) of 256x256 TileMap (while bg from (scx, scy))
     /// - Window is rendered on the top of bg.
     fn render_window(self: *@This(), bg_prio: *[LCD_INFO.width]Priority) void {
-        if (self.lcdc & BG_WINDOW_ENABLE == 0 or self.wy > self.ly) {
+        if (self.lcdc & WINDOW_ENABLE == 0 or self.wy > self.ly) {
             return;
         }
 
