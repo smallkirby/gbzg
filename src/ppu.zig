@@ -650,7 +650,7 @@ pub const Ppu = struct {
                     if (self.is_cgb)
                     (self.lcdc & BG_WINDOW_ENABLE == 0) or
                         (sprite.flags & Flags.PRIORITY == 0 and !bg_prio[i][0]) or
-                        bg_prio[i][1]
+                        !bg_prio[i][1]
                 else
                     sprite.flags & Flags.PRIORITY == 0 or !bg_prio[i][1];
 
