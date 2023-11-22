@@ -74,7 +74,7 @@ pub const GameBoy = struct {
     }
 
     pub fn run(self: *@This()) !void {
-        dprint("Start Running...\n", .{});
+        std.log.info("Start Running...", .{});
 
         var timer = try std.time.Timer.start();
         var elapsed: u128 = 0;
@@ -133,5 +133,3 @@ pub const GameBoy = struct {
         }
     }
 };
-
-const dprint = @import("std").debug.print;
