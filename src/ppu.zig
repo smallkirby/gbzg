@@ -275,7 +275,10 @@ pub const Ppu = struct {
             0xFF6A => self.ocps,
             // OCPD/OBPD
             0xFF6B => if (self.mode == .Drawing) 0xFF else self.sprite_palette_mem[self.ocps & 0x3F],
-            else => unreachable,
+            else => {
+                std.log.err("PPU: read from invalid address: {X:0>4}\n", .{addr});
+                unreachable;
+            },
         };
     }
 
