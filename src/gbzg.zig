@@ -49,10 +49,14 @@ pub const GameBoy = struct {
     const M_CYCLE_NANOS: u128 = M_CYCLE_CLOCK * 1_000_000_000 / CPU_CLOCK_HZ;
 
     pub fn new(bootrom: Bootrom, cartdige: Cartridge, renderer: Renderer, options: Options) !@This() {
+        const color = if (options.color == false and cartdige.header.cgb_flag != 1) b: {
+            std.log.info("GameBoy Color cartridge detected. Switching to color mode...", .{});
+            break :b true;
+        } else options.color;
         const peripherals = try Peripherals.new(
             bootrom,
             cartdige,
-            options.color,
+            color,
         );
         const lcd = try LCD.new(renderer);
         const cpu = Cpu.new();
