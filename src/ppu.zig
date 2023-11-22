@@ -624,7 +624,7 @@ pub const Ppu = struct {
             const Flags = Sprite.Flags;
 
             const palette: u8 = if (self.is_cgb) b: {
-                break :b @truncate(sprite.flags & 0b111);
+                break :b sprite.flags & 0b111;
             } else b: {
                 break :b if (sprite.flags & Flags.PALETTE != 0) self.obp1 else self.obp0;
             };
