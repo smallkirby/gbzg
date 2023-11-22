@@ -512,7 +512,7 @@ pub const Ppu = struct {
             );
 
             const attr = self.get_bg_attr(
-                @intFromBool((self.lcdc & BG_TILE_MAP) != 0),
+                @intFromBool((self.lcdc & WINDOW_TILE_MAP) != 0),
                 y / TileInfo.HEIGHT,
                 x_res[0] / TileInfo.WIDTH,
             );
