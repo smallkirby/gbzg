@@ -5,6 +5,7 @@ const LCD = @import("lcd.zig").LCD;
 const Peripherals = @import("peripherals.zig").Peripherals;
 const Cpu = @import("cpu/cpu.zig").Cpu;
 const Cartridge = @import("cartridge.zig").Cartridge;
+const Controller = @import("controller.zig").Controller;
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 pub const default_allocator = gpa.allocator();
@@ -43,12 +44,19 @@ pub const GameBoy = struct {
     peripherals: Peripherals,
     lcd: LCD,
     options: Options,
+    controller: Controller,
 
     const CPU_CLOCK_HZ: u128 = 4_194_304;
     const M_CYCLE_CLOCK: u128 = 4;
     const M_CYCLE_NANOS: u128 = M_CYCLE_CLOCK * 1_000_000_000 / CPU_CLOCK_HZ;
 
-    pub fn new(bootrom: Bootrom, cartdige: Cartridge, renderer: Renderer, options: Options) !@This() {
+    pub fn new(
+        bootrom: Bootrom,
+        cartdige: Cartridge,
+        renderer: Renderer,
+        controller: Controller,
+        options: Options,
+    ) !@This() {
         const color = if (options.color == false and cartdige.header.cgb_flag == 0xC0) b: {
             std.log.info("GameBoy Color cartridge detected. Switching to color mode...", .{});
             break :b true;
@@ -65,16 +73,20 @@ pub const GameBoy = struct {
             .cpu = cpu,
             .peripherals = peripherals,
             .lcd = lcd,
+            .controller = controller,
             .options = options,
         };
     }
 
-    pub fn deinit(self: @This()) !void {
+    pub fn deinit(self: *@This()) !void {
         try self.lcd.deinit();
+        try self.controller.deinit();
     }
 
     pub fn run(self: *@This()) !void {
         std.log.info("Start Running...", .{});
+
+        try self.controller.start_key_watch();
 
         var timer = try std.time.Timer.start();
         var elapsed: u128 = 0;
@@ -129,6 +141,11 @@ pub const GameBoy = struct {
                 }
 
                 elapsed += M_CYCLE_NANOS;
+
+                const now = timer.read();
+                if (now - elapsed < M_CYCLE_NANOS / 2) {
+                    std.time.sleep(@truncate((@as(u128, now) - elapsed) / 2));
+                }
             }
         }
     }

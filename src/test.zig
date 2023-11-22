@@ -11,6 +11,7 @@ comptime {
     _ = @import("interrupts.zig");
     _ = @import("timer.zig");
     _ = @import("joypad.zig");
+    _ = @import("controller.zig");
 
     _ = @import("cpu/test.zig");
     _ = @import("render/sixel.zig");

@@ -2,7 +2,7 @@ const Sixel = @import("render/sixel.zig").Sixel;
 const LCD_INFO = @import("gbzg.zig").LCD_INFO;
 
 pub const Renderer = union(enum) {
-    sixel: Sixel,
+    sixel: *Sixel,
 };
 
 pub const LCD = struct {
@@ -14,7 +14,7 @@ pub const LCD = struct {
         };
     }
 
-    pub fn deinit(self: @This()) !void {
+    pub fn deinit(self: *@This()) !void {
         switch (self.renderer) {
             .sixel => try self.renderer.sixel.deinit(),
         }

@@ -1,3 +1,7 @@
+//! Sixel module.
+//! This module has Renderer implementation and Controller implementation.
+//! For the controller inpl, it uses epoll to watch stdin.
+
 const std = @import("std");
 const gbzg = @import("../gbzg.zig");
 const Options = gbzg.Options;
@@ -9,6 +13,7 @@ const c = @cImport({
     @cInclude("stdio.h");
     @cInclude("termios.h");
     @cInclude("unistd.h");
+    @cInclude("sys/epoll.h");
 });
 
 pub const Sixel = struct {
@@ -17,6 +22,9 @@ pub const Sixel = struct {
     sixel_encoder: ?*sixel.sixel_encoder align(64),
     buffer: [LCD_INFO.pixels * 3]u8, // *3 for RGB888
     old_termios: ?c.termios,
+    key_watcher: ?std.Thread,
+    mutex: std.Thread.Mutex,
+    key_buffer: [0x10]?u32 = [_]?u32{null} ** 0x10,
 
     options: Options,
 
@@ -24,6 +32,7 @@ pub const Sixel = struct {
         OutputNewError,
         EncodeError,
         TermionError,
+        ThreadError,
     };
 
     pub fn new(options: Options) !@This() {
@@ -35,6 +44,8 @@ pub const Sixel = struct {
             .sixel_encoder = null,
             .buffer = buffer[0],
             .old_termios = null,
+            .key_watcher = null,
+            .mutex = std.Thread.Mutex{},
             .options = options,
         };
 
@@ -133,12 +144,9 @@ pub const Sixel = struct {
         self.old_termios = old_termios;
 
         new_temios = old_termios;
-        new_temios.c_lflag &= ~(@as(c_uint, c.BRKINT) | @as(c_uint, c.ICRNL) | @as(c_uint, c.INPCK) | @as(c_uint, c.ISTRIP) | @as(c_uint, c.IXON));
-        new_temios.c_lflag &= ~(@as(c_uint, c.ECHO) | @as(c_uint, c.ICANON) | @as(c_uint, c.IEXTEN));
-        new_temios.c_cflag &= ~(@as(c_uint, c.CSIZE) | @as(c_uint, c.PARENB));
-        new_temios.c_cflag |= @as(c_uint, c.CS8);
-        new_temios.c_oflag &= ~(@as(c_uint, c.OPOST));
-        new_temios.c_cc[c.VMIN] = 1;
+        new_temios.c_lflag &= ~@as(c_uint, c.BRKINT);
+        new_temios.c_lflag &= ~@as(c_uint, c.ECHO);
+        new_temios.c_cc[c.VMIN] = 0;
         new_temios.c_cc[c.VTIME] = 0;
 
         ret = c.tcsetattr(c.STDIN_FILENO, c.TCSAFLUSH, &new_temios);
@@ -149,6 +157,86 @@ pub const Sixel = struct {
         _ = c.printf("\x1B[?25l\x1B"); // hide cursor
         _ = c.printf("\x1B[1B"); // move cursor down by 1
         self.save_cursor_position();
+    }
+
+    pub fn get_keys(self: *@This()) []?u32 {
+        var keys = [_]?u32{null} ** 0x10;
+
+        if (self.mutex.tryLock() == false) {
+            return &.{};
+        }
+        defer self.mutex.unlock();
+
+        for (0..self.key_buffer.len) |i| {
+            if (self.key_buffer[i]) |key| {
+                keys[i] = key;
+                self.key_buffer[i] = null;
+            }
+        }
+
+        return &keys;
+    }
+
+    fn watch_key(self: *@This()) void {
+        var fd = c.epoll_create(5);
+        var event: c.epoll_event = .{
+            .events = c.EPOLLIN,
+            .data = .{
+                .fd = c.STDIN_FILENO,
+            },
+        };
+
+        _ = c.epoll_ctl(
+            fd,
+            c.EPOLL_CTL_ADD,
+            c.STDIN_FILENO,
+            @ptrCast(&event),
+        );
+
+        while (true) {
+            var events: [1]c.epoll_event = undefined;
+            var ret = c.epoll_wait(
+                fd,
+                @ptrCast(&events),
+                1,
+                0,
+            );
+
+            if (ret != 0) {
+                var data: u8 = undefined;
+                while (c.read(c.STDIN_FILENO, @ptrCast(&data), 1) > 0) {
+                    while (self.mutex.tryLock() == false) {
+                        std.time.sleep(10);
+                    }
+                    defer self.mutex.unlock();
+                    for (0..self.key_buffer.len) |i| {
+                        if (self.key_buffer[i] == null) {
+                            self.key_buffer[i] = @as(u32, data);
+                            break;
+                        }
+                    }
+
+                    std.time.sleep(10);
+                }
+            }
+        }
+    }
+
+    pub fn start_key_watch(self: *@This()) SixelErrors!void {
+        self.key_watcher = std.Thread.spawn(
+            .{},
+            watch_key,
+            .{self},
+        ) catch |err| {
+            std.log.err("failed to spawn thread: {!}", .{err});
+            return SixelErrors.ThreadError;
+        };
+    }
+
+    pub fn deinit_key_watch(self: *@This()) void {
+        if (self.key_watcher) |watcher| {
+            watcher.detach();
+        }
     }
 
     fn restore_terminal(self: @This()) SixelErrors!void {

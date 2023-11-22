@@ -1,5 +1,6 @@
 const Sixel = @import("render/sixel.zig").Sixel;
 const Renderer = @import("lcd.zig").Renderer;
+const Controller = @import("controller.zig").Controller;
 const GameBoy = @import("gbzg.zig").GameBoy;
 const Bootrom = @import("bootrom.zig").Bootrom;
 const Cartridge = @import("cartridge.zig").Cartridge;
@@ -120,14 +121,25 @@ fn start(options: Options) !void {
     // Setup LCD Renderer
     var sixel = try Sixel.new(options);
     var r: Renderer = .{
-        .sixel = sixel,
+        .sixel = &sixel,
+    };
+
+    // Setup controller
+    var controller = Controller{
+        .sixel = &sixel,
     };
 
     // Setup signal handler
     try set_signal_handler(signal_handler);
 
     // Initialize GameBoy
-    var gb = try GameBoy.new(bootrom, cartridge, r, options);
+    var gb = try GameBoy.new(
+        bootrom,
+        cartridge,
+        r,
+        controller,
+        options,
+    );
     saved_gb = &gb;
     defer {
         gb.deinit() catch unreachable;
