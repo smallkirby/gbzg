@@ -699,6 +699,12 @@ pub const Ppu = struct {
         return @bitCast(self.vram2[@as(u14, @truncate(start_addr + (@as(usize, @intCast(row)) * TileMapInfo.COLS) + col))]);
     }
 
+    fn convert_rgb555_to_rgb888(rgb555: u8) u8 {
+        return @truncate(
+            (@as(u16, rgb555) & 0b0001_1111) * 255 / 31,
+        );
+    }
+
     /// Get RGB color from specified palette. (CGB only)
     fn get_color_from_palette_mem(
         _: @This(),
@@ -715,9 +721,9 @@ pub const Ppu = struct {
         ]) << 8;
 
         return [_]u8{
-            @truncate(rgb555 & 0b0001_1111),
-            @truncate((rgb555 >> 5) & 0b0001_1111),
-            @truncate((rgb555 >> 10) & 0b0001_1111),
+            convert_rgb555_to_rgb888(@truncate(rgb555 & 0b0001_1111)),
+            convert_rgb555_to_rgb888(@truncate((rgb555 >> 5) & 0b0001_1111)),
+            convert_rgb555_to_rgb888(@truncate((rgb555 >> 10) & 0b0001_1111)),
         };
     }
 
