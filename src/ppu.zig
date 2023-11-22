@@ -597,19 +597,21 @@ pub const Ppu = struct {
         }
 
         // Sprites located left has higher priority.
-        std.sort.block(
-            Sprite,
-            ordered,
-            {},
-            Sprite.cmp,
-        );
+        if (!self.is_cgb) {
+            std.sort.block(
+                Sprite,
+                ordered,
+                {},
+                Sprite.cmp,
+            );
+        }
 
         return ordered;
     }
 
     /// Render sprites.
     fn render_sprite(self: *@This(), bg_prio: *[LCD_INFO.width]Priority) void {
-        if (self.lcdc & SPRITE_ENABLE == 0) {
+        if (self.lcdc & SPRITE_ENABLE == 0 and !self.is_cgb) {
             return;
         }
         const size: usize = if (self.lcdc & SPRITE_SIZE != 0) 16 else 8;
