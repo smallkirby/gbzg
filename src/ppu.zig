@@ -421,7 +421,7 @@ pub const Ppu = struct {
     /// Therefore, this function renders 160x144 pixels of Tile Map decided by SCX and SCY.
     /// TODO: function name should be changed to `render_bg_line` ?
     fn render_bg(self: *@This(), bg_prio: *[LCD_INFO.width]Priority) void {
-        if (self.lcdc & BG_WINDOW_ENABLE == 0) {
+        if (self.lcdc & BG_WINDOW_ENABLE == 0 and !self.is_cgb) {
             return;
         }
 
@@ -611,7 +611,7 @@ pub const Ppu = struct {
 
     /// Render sprites.
     fn render_sprite(self: *@This(), bg_prio: *[LCD_INFO.width]Priority) void {
-        if (self.lcdc & SPRITE_ENABLE == 0 and !self.is_cgb) {
+        if (self.lcdc & SPRITE_ENABLE == 0) {
             return;
         }
         const size: usize = if (self.lcdc & SPRITE_SIZE != 0) 16 else 8;
