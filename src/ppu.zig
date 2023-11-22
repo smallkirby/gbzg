@@ -467,7 +467,7 @@ pub const Ppu = struct {
             const colors = if (self.is_cgb)
                 self.get_color_from_palette_mem(
                     self.bg_palette_mem,
-                    @intCast(attr.?.color_palette),
+                    attr.?.color_palette,
                     pixel,
                 )
             else
@@ -544,7 +544,7 @@ pub const Ppu = struct {
             const colors = if (self.is_cgb)
                 self.get_color_from_palette_mem(
                     self.bg_palette_mem,
-                    @intCast(attr.?.color_palette),
+                    attr.?.color_palette,
                     pixel,
                 )
             else
