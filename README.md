@@ -1,4 +1,4 @@
-# gbzg: GameBoy Emulator written in Zig
+# gbzg: GameBoy (DMG/CGB) Emulator written in Zig
 
 Forked from [gb-emu](https://github.com/take44444/gb-emu).
 
@@ -24,7 +24,7 @@ Forked from [gb-emu](https://github.com/take44444/gb-emu).
 | <img src="docs/dmg-acid2.png" width="200" > | <img src="docs/cgb-acid2.png" width="200" > |
 | [dmg-acid2](https://github.com/mattcurrie/dmg-acid2) PPU test | [cgb-acid2](https://github.com/mattcurrie/cgb-acid2) PPU test |
 
-## Build
+## 🏗️ Build
 
 `zig build` command installs the binary to `zig-out/bin/gbzg`.
 Also, you can run the emulator by following command:
@@ -33,7 +33,9 @@ Also, you can run the emulator by following command:
 zig build run -- --bootrom=</path/to/bootrom> --cart=</path/to/cartridge>
 ```
 
-## Renderer
+## 🤝 External Interface
+
+### 🎨 Renderer
 
 For now, [Sixel](https://github.com/saitoha/libsixel) is supported as a LCD renderer.
 You can install dependencies by following command.
@@ -45,7 +47,13 @@ sudo apt install libsixel-dev
 Note that your terminal must support Sixel encoding.
 Major candidate would be [WezTerm](https://wezfurlong.org/wezterm/index.html).
 
-## Development
+### 🎮 Joypad
+
+For now, keyboard input is supported as a joypad.
+To watch user key inputs in background, this emulator uses `epoll()`.
+Your OS must support `epoll()` system call.
+
+## 🧑‍💻 Development
 
 - You can run unit tests by `zig build test`.
 - Default output is optimized for speed. You can change the option in `build.zig`. Available options are `Debug`, `ReleaseSafe`, `ReleaseFast`, `ReleaseSmall`.
