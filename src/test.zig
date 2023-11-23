@@ -12,9 +12,11 @@ comptime {
     _ = @import("timer.zig");
     _ = @import("joypad.zig");
     _ = @import("controller.zig");
+    _ = @import("server.zig");
 
     _ = @import("cpu/test.zig");
     _ = @import("render/sixel.zig");
+    _ = @import("debugger/test.zig");
 
     @import("std").testing.refAllDecls(@This());
 }

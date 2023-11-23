@@ -12,17 +12,26 @@ pub fn build(b: *std.Build) void {
         .preferred_optimize_mode = .ReleaseFast,
     });
 
-    const exe = b.addExecutable(.{
+    const gbzg = b.addExecutable(.{
         .name = "gbzg",
         .root_source_file = .{ .path = "src/main.zig" },
         .target = target,
         .optimize = optimize,
         .link_libc = true,
     });
-    exe.linkSystemLibrary("sixel");
-    b.installArtifact(exe);
+    gbzg.linkSystemLibrary("sixel");
+    b.installArtifact(gbzg);
 
-    const run_cmd = b.addRunArtifact(exe);
+    const zdb = b.addExecutable(.{
+        .name = "zdb",
+        .root_source_file = .{ .path = "src/zdb.zig" },
+        .target = target,
+        .optimize = optimize,
+        .link_libc = false,
+    });
+    b.installArtifact(zdb);
+
+    const run_cmd = b.addRunArtifact(gbzg);
     run_cmd.step.dependOn(b.getInstallStep());
 
     if (b.args) |args| {

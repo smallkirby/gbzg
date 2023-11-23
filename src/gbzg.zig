@@ -6,6 +6,7 @@ const Peripherals = @import("peripherals.zig").Peripherals;
 const Cpu = @import("cpu/cpu.zig").Cpu;
 const Cartridge = @import("cartridge.zig").Cartridge;
 const Controller = @import("controller.zig").Controller;
+const ZdbServer = @import("server.zig").ZdbSever;
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 pub const default_allocator = gpa.allocator();
@@ -14,6 +15,7 @@ pub const hram_allocator = default_allocator;
 pub const wram_allocator = default_allocator;
 pub const ppu_allocator = default_allocator;
 pub const cartridge_allocator = default_allocator;
+pub const debugger_allocator = default_allocator;
 
 pub const LCD_INFO = struct {
     pub const width: u8 = 160;
@@ -46,6 +48,8 @@ pub const GameBoy = struct {
     options: Options,
     controller: Controller,
 
+    zdb_server: ZdbServer,
+
     const CPU_CLOCK_HZ: u128 = 4_194_304;
     const M_CYCLE_CLOCK: u128 = 4;
     const M_CYCLE_NANOS: u128 = M_CYCLE_CLOCK * 1_000_000_000 / CPU_CLOCK_HZ;
@@ -69,22 +73,29 @@ pub const GameBoy = struct {
         const lcd = try LCD.new(renderer);
         const cpu = Cpu.new();
 
+        var server = try ZdbServer.new();
+
         return @This(){
             .cpu = cpu,
             .peripherals = peripherals,
             .lcd = lcd,
             .controller = controller,
             .options = options,
+            .zdb_server = server,
         };
     }
 
     pub fn deinit(self: *@This()) !void {
         try self.lcd.deinit();
         try self.controller.deinit();
+        self.zdb_server.deinit();
     }
 
     pub fn run(self: *@This()) !void {
         std.log.info("Start Running...", .{});
+
+        // non-blocking zdb server listen
+        try self.zdb_server.listen("0.0.0.0", 49494); // TODO: variable port
 
         try self.controller.start_key_watch();
 
@@ -95,6 +106,8 @@ pub const GameBoy = struct {
             const e = timer.read();
 
             for (0..@as(usize, @intCast((e - elapsed) / M_CYCLE_NANOS))) |_| {
+                try self.zdb_server.handle_clock(self);
+
                 if (self.options.boot_only and self.cpu.regs.pc == 0x78) {
                     // PC=0x78 jumps to 0xFFE and starts executing the cartridge code.
                     std.log.info("BootROM finished. Exiting...", .{});
