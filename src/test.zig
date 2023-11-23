@@ -16,6 +16,7 @@ comptime {
 
     _ = @import("cpu/test.zig");
     _ = @import("render/sixel.zig");
+    _ = @import("debugger/test.zig");
 
     @import("std").testing.refAllDecls(@This());
 }

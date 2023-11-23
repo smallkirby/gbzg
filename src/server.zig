@@ -3,10 +3,26 @@
 const std = @import("std");
 const net = std.net;
 const gbzg = @import("gbzg.zig");
+const GameBoy = gbzg.GameBoy;
+const Message = @import("debugger/message.zig").Message;
+const Request = @import("debugger/request.zig").Request;
 const allocator = gbzg.debugger_allocator;
+const c = @cImport({
+    @cInclude("sys/epoll.h");
+});
+
+const ZdbState = enum {
+    Unconnected,
+    Connected,
+    Continue,
+    Step,
+};
 
 pub const ZdbSever = struct {
     server: net.StreamServer,
+    conn: ?net.StreamServer.Connection = null,
+    state: ZdbState = .Unconnected,
+    epoll: ?c_int = null,
 
     pub fn new() !@This() {
         const opt = net.StreamServer.Options{
@@ -75,7 +91,10 @@ pub const ZdbSever = struct {
             &addr_len,
             std.os.SOCK.CLOEXEC,
         );
+
         if (res) |fd| {
+            self.state = .Connected;
+            try self.set_epoll(fd);
             return .{
                 .stream = std.net.Stream{ .handle = fd },
                 .address = accepted_addr,
@@ -86,28 +105,88 @@ pub const ZdbSever = struct {
         }
     }
 
+    fn set_epoll(self: *@This(), sockfd: c_int) !void {
+        if (self.server.sockfd == null) {
+            std.log.err("set_poll() is called while the server is not listening", .{});
+            unreachable;
+        }
+
+        const fd = c.epoll_create(1);
+        var event: c.epoll_event = .{
+            .events = c.EPOLLIN,
+            .data = .{ .fd = sockfd },
+        };
+
+        _ = c.epoll_ctl(
+            fd,
+            c.EPOLL_CTL_ADD,
+            sockfd,
+            &event,
+        );
+
+        self.epoll = fd;
+    }
+
     /// Gracefully close the server.
     pub fn deinit(self: *@This()) void {
+        if (self.conn) |conn| {
+            conn.stream.close();
+        }
         self.server.close();
         self.server.deinit();
     }
 
-    fn handle_connection(_: *@This(), conn: net.StreamServer.Connection) !void {
-        var buf = try allocator.alloc(u8, 0x1000);
-        defer allocator.free(buf);
+    fn handle_request(self: *@This(), req: Request) !void {
+        switch (req.id) {
+            .Kill => {
+                std.log.warn("Killed by zdb. Exiting...", .{});
+                unreachable;
+            },
+            .Continue => {
+                self.state = .Continue;
+            },
+            .Stop => {
+                self.state = .Connected;
+            },
+            else => {},
+        }
+    }
+
+    pub fn handle_clock(self: *@This(), _: *GameBoy) !void {
+        if (self.conn == null) {
+            if (try self.accept()) |conn| {
+                self.conn = conn;
+            } else {
+                return;
+            }
+        }
+        const conn = self.conn.?;
 
         const stream = &conn.stream;
-        defer stream.close();
-
         while (true) {
-            @memset(buf, 0);
-            const n = try stream.read(buf[0..]);
-            if (n == 0) {
-                break;
+            var events: [1]c.epoll_event = undefined;
+            if (c.epoll_wait(
+                self.epoll.?,
+                &events[0],
+                1,
+                0,
+            ) == 0) {
+                if (self.state == .Continue) break else {
+                    std.time.sleep(1000);
+                    continue;
+                }
             }
-            // XXX: impl event handler here
-            std.log.info("Read {} bytes", .{n});
-            std.log.info("Received: {s}", .{buf});
+
+            var buf = try allocator.alloc(u8, 0x1000);
+            defer allocator.free(buf);
+
+            const n = stream.read(buf[0..]) catch 0;
+            if (n == 0) continue;
+
+            const msg = try Message.deserialize(buf[0..n], allocator);
+            defer msg.deinit(allocator);
+            const req = try Request.deserialize(msg.data);
+            try self.handle_request(req);
         }
     }
 };

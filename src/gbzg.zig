@@ -106,10 +106,7 @@ pub const GameBoy = struct {
             const e = timer.read();
 
             for (0..@as(usize, @intCast((e - elapsed) / M_CYCLE_NANOS))) |_| {
-                if (try self.zdb_server.accept()) |_| {
-                    std.log.err("Connection established. Exiting...", .{});
-                    unreachable; // XXX
-                }
+                try self.zdb_server.handle_clock(self);
 
                 if (self.options.boot_only and self.cpu.regs.pc == 0x78) {
                     // PC=0x78 jumps to 0xFFE and starts executing the cartridge code.
