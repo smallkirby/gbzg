@@ -36,6 +36,11 @@ pub const Joypad = struct {
         self.direction |= button.as_direction();
         self.action |= button.as_action();
     }
+
+    pub fn clear(self: *@This()) void {
+        self.direction = 0xFF;
+        self.action = 0xFF;
+    }
 };
 
 pub const Button = enum(u8) {
@@ -65,6 +70,20 @@ pub const Button = enum(u8) {
             .B => 0b0010,
             .A => 0b0001,
             else => 0,
+        };
+    }
+
+    pub fn new(key: u32) ?@This() {
+        return switch (key) {
+            'a' => .A,
+            's' => .B,
+            'y' => .Left,
+            'n' => .Down,
+            'e' => .Up,
+            'o' => .Right,
+            'b' => .Start,
+            'j' => .Select,
+            else => null,
         };
     }
 };

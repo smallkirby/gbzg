@@ -6,6 +6,7 @@ const Peripherals = @import("peripherals.zig").Peripherals;
 const Cpu = @import("cpu/cpu.zig").Cpu;
 const Cartridge = @import("cartridge.zig").Cartridge;
 const Controller = @import("controller.zig").Controller;
+const Button = @import("joypad.zig").Button;
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 pub const default_allocator = gpa.allocator();
@@ -104,6 +105,19 @@ pub const GameBoy = struct {
                     if (self.cpu.regs.pc == at) {
                         std.log.info("Reached at specified PC(=0x{X:0>4}). Exiting...", .{self.cpu.regs.pc});
                         return;
+                    }
+                }
+
+                for (self.controller.get_keys()) |key| {
+                    self.peripherals.joypad.clear();
+                    if (key) |k| {
+                        if (Button.new(k)) |b| {
+                            std.log.warn("Pressed: {}", .{b});
+                            self.peripherals.joypad.button_pressed(
+                                &self.cpu.interrupts,
+                                b,
+                            );
+                        }
                     }
                 }
 

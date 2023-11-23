@@ -6,6 +6,7 @@ const Timer = @import("timer.zig").Timer;
 const Cartridge = @import("cartridge.zig").Cartridge;
 const CartridgeHeader = @import("cartridge.zig").CartridgeHeader;
 const Interrupts = @import("interrupts.zig").Interrupts;
+const Joypad = @import("joypad.zig").Joypad;
 
 /// Periperal devices and MMIO handler
 pub const Peripherals = struct {
@@ -15,6 +16,7 @@ pub const Peripherals = struct {
     ppu: Ppu,
     cartridge: Cartridge,
     timer: Timer,
+    joypad: Joypad,
 
     pub fn new(bootrom: Bootrom, cartridge: Cartridge, color: bool) !Peripherals {
         return Peripherals{
@@ -24,6 +26,7 @@ pub const Peripherals = struct {
             .ppu = try Ppu.new(color),
             .cartridge = cartridge,
             .timer = Timer.new(),
+            .joypad = Joypad.new(),
         };
     }
 
@@ -45,6 +48,7 @@ pub const Peripherals = struct {
             0xA000...0xBFFF => self.cartridge.read(addr),
             0xC000...0xDFFF => self.wram.read(addr),
             0xFE00...0xFE9F => self.ppu.read(addr),
+            0xFF00 => self.joypad.read(),
             0xFF04...0xFF07 => self.timer.read(addr),
             0xFF0F => interrupts.read(addr),
             0xFF40...0xFF4B => self.ppu.read(addr),
@@ -72,6 +76,7 @@ pub const Peripherals = struct {
             0xA000...0xBFFF => self.cartridge.write(addr, val),
             0xC000...0xDFFF => self.wram.write(addr, val),
             0xFE00...0xFE9F => self.ppu.write(addr, val),
+            0xFF00 => self.joypad.write(val),
             0xFF04...0xFF07 => self.timer.write(addr, val),
             0xFF0F => interrupts.write(addr, val),
             0xFF40...0xFF4B => self.ppu.write(addr, val),
