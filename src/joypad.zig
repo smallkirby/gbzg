@@ -28,12 +28,12 @@ pub const Joypad = struct {
 
         pub fn new() @This() {
             return @This(){
-                .a = 0,
-                .b = 0,
-                .select = 0,
-                .start = 0,
-                .direction_enabled = 0,
-                .action_enabled = 0,
+                .a = 1,
+                .b = 1,
+                .select = 1,
+                .start = 1,
+                .direction_enabled = 1,
+                .action_enabled = 1,
             };
         }
 
@@ -120,10 +120,10 @@ test "button press" {
 
     joypad.button_pressed(&intrs, Button.A);
     joypad.button_pressed(&intrs, Button.B);
-    try expect(joypad.read() == 0b1100_0000);
+    try expect(joypad.read() == 0b1111_1100);
 
     joypad.button_released(Button.A);
-    try expect(joypad.read() == 0b1100_0001);
+    try expect(joypad.read() == 0b1111_1101);
 }
 
 const expect = std.testing.expect;
